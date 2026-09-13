@@ -1,0 +1,10 @@
+<Project>
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <Version>0.1.0</Version>
+    <Company>First Option</Company>
+    <Product>FirstOption Revit MCP</Product>
+    <Copyright>First Option</Copyright>
+  </PropertyGroup>
+</Project>

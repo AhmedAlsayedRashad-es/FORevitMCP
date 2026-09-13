@@ -1,0 +1,106 @@
+<Window x:Class="FirstOption.RevitMcp.Addin.UI.GitHubSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GitHub Settings" Width="520" Height="600"
+        ResizeMode="NoResize" WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        FontFamily="Segoe UI" FontSize="12" Background="#F3F3F3">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/FirstOption.RevitMcp.Addin;component/UI/Theme.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <Style TargetType="TextBox">
+                <Setter Property="Padding" Value="3,2" />
+                <Setter Property="Margin" Value="0,3" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+            </Style>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,10">
+            <TextBlock Text="GitHub Settings" FontSize="16" FontWeight="SemiBold" />
+            <TextBlock Text="The MCP uploads the command library to this repository." Foreground="{StaticResource MutedBrush}" Margin="0,2,0,0" />
+        </StackPanel>
+
+        <Border Grid.Row="1" Style="{StaticResource Card}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="140" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="Repository owner" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="0" Grid.Column="1" x:Name="OwnerBox" ToolTip="User or organization, for example firstoption" />
+
+                <TextBlock Grid.Row="1" Text="Repository name" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="1" Grid.Column="1" x:Name="RepoBox" ToolTip="For example revit-commands" />
+
+                <TextBlock Grid.Row="2" Text="Branch" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="2" Grid.Column="1" x:Name="BranchBox" />
+
+                <TextBlock Grid.Row="3" Text="Personal access token" Style="{StaticResource FieldLabel}" />
+                <DockPanel Grid.Row="3" Grid.Column="1" Margin="0,3">
+                    <Button DockPanel.Dock="Right" x:Name="TestButton" Content="Test connection" Click="Test_Click" Style="{StaticResource SmallButton}" Margin="6,0,0,0" />
+                    <PasswordBox x:Name="TokenBox" Padding="3,2" VerticalContentAlignment="Center" />
+                </DockPanel>
+
+                <StackPanel Grid.Row="4" Grid.Column="1" Margin="0,0,0,4">
+                    <TextBlock x:Name="TokenStateText" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
+                    <TextBlock x:Name="RemoveTokenLink"><Hyperlink Click="RemoveToken_Click">Remove the saved token</Hyperlink></TextBlock>
+                    <TextBlock x:Name="TestResultText" TextWrapping="Wrap" Margin="0,2,0,0" />
+                </StackPanel>
+
+                <TextBlock Grid.Row="5" Text="Local library folder" Style="{StaticResource FieldLabel}" />
+                <DockPanel Grid.Row="5" Grid.Column="1">
+                    <Button DockPanel.Dock="Right" Content="Browse..." Click="Browse_Click" Style="{StaticResource SmallButton}" Margin="6,3,0,3" />
+                    <TextBox x:Name="LibraryBox" />
+                </DockPanel>
+
+                <TextBlock Grid.Row="6" Text="Commit author name" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="6" Grid.Column="1" x:Name="AuthorNameBox" />
+
+                <TextBlock Grid.Row="7" Text="Commit author email" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="7" Grid.Column="1" x:Name="AuthorEmailBox" />
+
+                <CheckBox Grid.Row="8" Grid.ColumnSpan="2" x:Name="AutoPushBox" Margin="0,10,0,3"
+                          Content="Allow MCP to push automatically after saving a command" />
+                <CheckBox Grid.Row="9" Grid.ColumnSpan="2" x:Name="NotifyBox" Margin="0,3"
+                          Content="Show notification in the panel after each push" />
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2" Background="{StaticResource AccentSoftBrush}" CornerRadius="4" Padding="8" Margin="0,0,0,10">
+            <TextBlock TextWrapping="Wrap">
+                The token is stored encrypted for the current Windows user (DPAPI).
+                Use a fine-grained token with <Bold>Contents: Read and write</Bold> on this repository only.
+                Without a token, git uses Git Credential Manager.
+            </TextBlock>
+        </Border>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Save" Click="Save_Click" IsDefault="True" Style="{StaticResource PrimaryButton}" MinWidth="80" Margin="0,0,8,0" />
+            <Button Content="Cancel" IsCancel="True" Style="{StaticResource SmallButton}" MinWidth="80" />
+        </StackPanel>
+    </Grid>
+</Window>

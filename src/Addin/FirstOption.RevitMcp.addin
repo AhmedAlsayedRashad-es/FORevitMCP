@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>FirstOption Revit MCP</Name>
+    <Assembly>FirstOption.RevitMcp\FirstOption.RevitMcp.Addin.dll</Assembly>
+    <FullClassName>FirstOption.RevitMcp.Addin.App</FullClassName>
+    <AddInId>B6E0C7E2-4B5E-4F8D-9C51-7A1F2D3E4C21</AddInId>
+    <VendorId>FirstOption</VendorId>
+    <VendorDescription>First Option</VendorDescription>
+  </AddIn>
+</RevitAddIns>
