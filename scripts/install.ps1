@@ -108,7 +108,11 @@ if (-not $SkipPyRevit) {
 
 # 4. Skills
 if (-not $SkipSkills) {
-    foreach ($target in @((Join-Path $HOME '.claude\skills'), (Join-Path $HOME '.codex\skills'))) {
+    # Skills go to the agents you register; with neither switch, to both.
+    $targets = @()
+    if ($RegisterClaude -or -not $RegisterCodex) { $targets += (Join-Path $HOME '.claude\skills') }
+    if ($RegisterCodex -or -not $RegisterClaude) { $targets += (Join-Path $HOME '.codex\skills') }
+    foreach ($target in $targets) {
         Step "Skills -> $target"
         Get-ChildItem (Join-Path $Root 'skills') -Directory | ForEach-Object {
             $dest = Join-Path $target $_.Name

@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.ExceptionServices;
+using System.Text.RegularExpressions;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Microsoft.CodeAnalysis;
@@ -123,9 +124,26 @@ namespace FirstOption.RevitMcp.Addin.CSharp
 
         private static MethodInfo Compile(string code, out List<string> diagnostics)
         {
-            var bytes = Emit(code, References(), out diagnostics);
-            return bytes == null ? null : Assembly.Load(bytes).GetType("FoMcpDynamic.Script").GetMethod("Run");
+            for (var attempt = 0; ; attempt++)
+            {
+                var bytes = Emit(code, References(), out diagnostics);
+                if (bytes != null) return Assembly.Load(bytes).GetType("FoMcpDynamic.Script").GetMethod("Run");
+
+                // CS0009: another add-in ships an assembly that Roslyn cannot read (obfuscated, bad strong-name key).
+                // Drop it from the references and compile again.
+                var bad = diagnostics.Where(d => d.StartsWith("CS0009"))
+                    .Select(d => BadMetadata.Match(d)).Where(m => m.Success).Select(m => m.Groups[1].Value).ToList();
+                if (bad.Count == 0 || attempt >= 5) return null;
+                lock (Gate)
+                {
+                    foreach (var path in bad) Excluded.Add(path);
+                    _references = null;
+                }
+            }
         }
+
+        private static readonly Regex BadMetadata = new Regex("Metadata file '(.+?)' could not be opened");
+        private static readonly HashSet<string> Excluded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>Wraps the body and compiles it. Returns the assembly bytes, or null with the errors. Separate from loading so tests can run it outside Revit.</summary>
         internal static byte[] Emit(string code, IEnumerable<MetadataReference> references, out List<string> diagnostics)
@@ -229,6 +247,7 @@ namespace FirstOption.RevitMcp.Addin.CSharp
                 var references = new List<MetadataReference>();
                 foreach (var path in paths.Distinct(StringComparer.OrdinalIgnoreCase))
                 {
+                    if (Excluded.Contains(path)) continue;
                     try
                     {
                         AssemblyName.GetAssemblyName(path);   // skip native files
