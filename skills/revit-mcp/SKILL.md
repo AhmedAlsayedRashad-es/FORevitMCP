@@ -12,7 +12,7 @@ The MCP sends your code to a running Revit. pyRevit Routes runs it on the Revit 
 1. Call `revit_instances`. When more than one Revit runs, ask the user for the port.
 2. Call `library_search` with 2-3 words (verb + element). When a command fits, `library_get` it, then `library_run` it with `args_json`.
 3. Otherwise write code. Start with a read-only step (collect, count, print). Change the model only after you know what is there.
-4. Run with `revit_execute_python` or `revit_execute_csharp`. Read `output`, `error`, `traceback` or `diagnostics`. Fix and run again.
+4. Run with `revit_execute_python` or `revit_execute_csharp`. Send `command_name` every time (it is required): a short name of 3-6 words, for example `Create grids`. The Revit MCP panel shows it. Read `output`, `error`, `traceback` or `diagnostics`. Fix and run again.
 5. When the code works, save it with `library_save` (see the `revit-command-library` skill).
 
 ## Choose the language
@@ -32,6 +32,16 @@ pyRevit runs IronPython, CPython 3 and C#. This MCP runs IronPython and C# live.
 - When a call times out, ask the user to look at Revit. Do not run a change again blindly; it can make duplicates.
 - Do not delete, purge, sync with central, or save the user's model unless the user asks.
 - ElementId: `id.Value` in Revit 2024+, `id.IntegerValue` in Revit 2021-2023.
+
+## Undo and safety
+
+- Every run is one entry in the Revit undo list. The answer has `runId` and `undoName`. A failed run leaves no change.
+- Before a task with several steps that change the model, call `revit_baseline`.
+- When a run did something wrong, call `revit_undo` (`runs=1`, `to_run_id`, or `to_baseline=true`). Read `verification` and tell the user the result.
+- Never reverse a run by writing new code (deleting what you made, setting old values back). That does not restore the model exactly.
+- When `revit_undo` refuses because of user changes, ask the user. Pass `include_user_changes=true` only after the user agrees. Or use `mode=manual` and give the user the instructions.
+- Ask the user before any action that Undo cannot reverse: save, synchronize with central, close a document, save a family file, `undo_group=false`. Tell the user about `sideEffects` in a run answer.
+- `revit_reset` discards every unsaved change. Use it only when the user asks for it.
 
 ## Python names you get
 
@@ -63,3 +73,7 @@ return levels.Count;
 | Starting a new transaction is not permitted | Your code opens a transaction inside the MCP transaction. Run again with `use_transaction=false`. |
 | The transaction ended with status RolledBack | Revit refused the change (a failure message). Check the input and the model state. |
 | Revit did not answer in N s | Revit is busy or a dialog is open. Ask the user. |
+| The undo group did not close | The code left a transaction open, or it saved the document. Everything was rolled back. Fix the code. |
+| Undo would also remove N change(s) that are not from the agent | Ask the user. Then `include_user_changes=true`, or `mode=manual`. |
+| Revit undid '...', which is not in the plan | Tell the user to press Redo (Ctrl+Y) once, then call `revit_undo_history`. |
+| Undo tracking is not loaded | The add-in or the extension is old. Ask the user to run `scripts\install.ps1` and restart Revit. |

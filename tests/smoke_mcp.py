@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 EXE = ROOT / "src/Server/bin/Release/net8.0-windows/win-x64/FirstOption.RevitMcp.exe"
@@ -34,7 +35,9 @@ def main():
     library = os.path.join(home, "library")
     bare = os.path.join(home, "remote.git")
     subprocess.run(["git", "init", "--bare", bare], check=True, capture_output=True)
-    with open(os.path.join(home, "settings.json"), "w") as f:
+    activity_file = os.path.join(home, "Activity Log", "activity.jsonl")
+    os.makedirs(os.path.join(home, "Settings"))
+    with open(os.path.join(home, "Settings", "settings.json"), "w") as f:
         json.dump({
             "libraryPath": library, "routesHost": "127.0.0.1", "portStart": PORT, "portCount": 2,
             "githubOwner": "test", "githubRepo": "library", "branch": "main", "remoteUrl": bare,
@@ -77,7 +80,8 @@ def main():
 
         tools = {t["name"] for t in request("tools/list", {})["result"]["tools"]}
         expected = {"revit_instances", "revit_status", "revit_execute_python", "revit_execute_csharp", "library_search",
-                    "library_get", "library_save", "library_run", "library_info", "github_status", "github_push"}
+                    "library_get", "library_save", "library_run", "library_info", "github_status", "github_push",
+                    "revit_undo_history", "revit_baseline", "revit_undo", "revit_reset"}
         check("tools/list has all tools", expected <= tools, sorted(tools))
 
         r = call("revit_instances", {})
@@ -86,17 +90,21 @@ def main():
         r = call("revit_status", {})
         check("revit_status lists languages", "csharp" in r.get("languages", {}), r)
 
-        r = call("revit_execute_python", {"code": "print('hello ' + str(args['a']))\nresult = 6 * 7", "args_json": "{\"a\": 5}"})
+        r = call("revit_execute_python", {"code": "result = 1"})
+        check("execute refuses a run without command_name", r.get("ok") is False and "command_name" in r.get("error", "") and r.get("hint"), r)
+        r = call("revit_execute_python", {"code": "result = 1", "command_name": "  "})
+        check("execute refuses an empty command_name", r.get("ok") is False and "command_name" in r.get("error", ""), r)
+        r = call("revit_execute_python", {"code": "print('hello ' + str(args['a']))\nresult = 6 * 7", "args_json": "{\"a\": 5}", "command_name": "Say hello"})
         check("execute python ok", r.get("ok") is True and "hello 5" in r.get("output", "") and r.get("result") == 42, r)
         check("content type is exactly application/json", r.get("contentType") == "application/json", r.get("contentType"))
 
-        r = call("revit_execute_python", {"code": "1/0"})
+        r = call("revit_execute_python", {"code": "1/0", "command_name": "Divide by zero"})
         check("execute python error comes back", r.get("ok") is False and "ZeroDivisionError" in (r.get("error") or ""), r)
 
-        r = call("revit_execute_python", {"code": "x", "args_json": "[1,2]"})
+        r = call("revit_execute_python", {"code": "x", "args_json": "[1,2]", "command_name": "Bad args"})
         check("bad args_json is refused", r.get("ok") is False and "object" in r.get("error", ""), r)
 
-        r = call("revit_execute_csharp", {"code": "return 1;"})
+        r = call("revit_execute_csharp", {"code": "return 1;", "command_name": "Return one"})
         check("csharp without runner is refused", r.get("ok") is False and "C# runner" in r.get("error", ""), r)
 
         r = call("library_save", {"name": "hello_world", "description": "Prints hello and the args.", "language": "ironpython",
@@ -151,7 +159,7 @@ def main():
         check("second push says nothing new", r.get("ok") is True and r.get("nothingToPush") is True, r)
 
         # auto-push on save
-        settings_path = os.path.join(home, "settings.json")
+        settings_path = os.path.join(home, "Settings", "settings.json")
         s = json.load(open(settings_path))
         s["autoPush"] = True
         json.dump(s, open(settings_path, "w"))
@@ -159,11 +167,61 @@ def main():
                                   "code": "print('hello v2')", "overwrite": True})
         check("auto-push after save", r.get("ok") is True and (r.get("push") or {}).get("ok") is True, r)
 
-        lines = [json.loads(x) for x in open(os.path.join(home, "activity.jsonl"), encoding="utf-8") if x.strip()]
+        lines = [json.loads(x) for x in open(activity_file, encoding="utf-8") if x.strip()]
         kinds = [x["kind"] for x in lines]
         check("activity log has executes, saves, pushes",
               kinds.count("execute") == 3 and kinds.count("library_save") == 3 and kinds.count("github_push") == 2, kinds)
         check("activity client is claude", all(x.get("client") == "claude" for x in lines), {x.get("client") for x in lines})
+
+        # undo
+        def user_change(name):
+            req = urllib.request.Request("http://127.0.0.1:{}/fo-mcp/mock-user-change/".format(PORT),
+                                         data=json.dumps({"name": name}).encode("utf-8"), headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(req).read()
+
+        r = call("revit_baseline", {})
+        check("revit_baseline", r.get("ok") is True, r)
+        r = call("revit_execute_python", {"code": "result = 1", "command_name": "Count walls"})
+        check("run sends undo_group and gets a runId", r.get("undoGroup") is True and r.get("runId") and r.get("undoName"), r)
+        first_run = r.get("runId")
+        user_change("Wall by the user")
+        r = call("revit_execute_python", {"code": "result = 2", "transaction_name": "Make grids", "command_name": "Make grids"})
+        check("undo name uses transaction_name", (r.get("undoName") or "").startswith("Make grids #"), r)
+        names = [x.get("commandName") for x in (json.loads(x) for x in open(activity_file, encoding="utf-8") if x.strip())
+                 if x["kind"] == "execute"][-2:]
+        check("activity log names runs by command_name", names == ["Count walls", "Make grids"], names)
+
+        r = call("revit_undo_history", {})
+        sources = [e.get("source") for e in r.get("entries", [])][:3]
+        check("history lists agent and user entries, top first", sources == ["agent", "user or other add-in", "agent"], r)
+
+        r = call("revit_undo", {"runs": 1, "to_baseline": True})
+        check("undo refuses two targets", r.get("ok") is False and "only one target" in r.get("error", ""), r)
+        r = call("revit_undo", {"mode": "sometimes"})
+        check("undo refuses a bad mode", r.get("ok") is False, r)
+        r = call("revit_undo", {"to_baseline": True})
+        check("undo refuses to remove user changes", r.get("ok") is False and "not from the agent" in r.get("error", "") and r.get("plan"), r)
+        r = call("revit_undo", {"to_run_id": first_run, "mode": "manual"})
+        check("manual undo also refuses to remove user changes", r.get("ok") is False and r.get("plan"), r)
+        r = call("revit_undo", {"runs": 1, "mode": "manual"})
+        check("manual undo of the last run", r.get("ok") is True and r.get("mode") == "manual" and r.get("instructions"), r)
+        r = call("revit_undo", {"to_baseline": True, "include_user_changes": True})
+        check("auto undo to the baseline is done and checked",
+              r.get("ok") is True and r.get("state") == "done" and (r.get("verification") or {}).get("ok") is True and len(r.get("undoSteps", [])) == 3, r)
+        r = call("revit_undo_history", {})
+        check("history shows the entries undone", all(e.get("state") == "undone" for e in r.get("entries", [])[:3]), r)
+        r = call("revit_undo", {"to_baseline": True})
+        check("nothing left to undo", r.get("ok") is True and r.get("nothingToUndo") is True, r)
+
+        r = call("revit_reset", {})
+        check("reset asks for confirmation", r.get("ok") is False and r.get("needsConfirmation") is True, r)
+        r = call("revit_reset", {"confirm": True})
+        check("reset with confirm", r.get("ok") is True and r.get("reopened"), r)
+
+        lines = [json.loads(x) for x in open(activity_file, encoding="utf-8") if x.strip()]
+        kinds = [x["kind"] for x in lines]
+        check("activity log has undo and reset", kinds.count("undo") == 5 and kinds.count("reset") == 1, kinds)
+        check("activity log has runId on executes", all(x.get("runId") for x in lines[-12:] if x["kind"] == "execute"), lines[-12:])
     finally:
         server.kill()
         mock.kill()

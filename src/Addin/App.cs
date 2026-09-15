@@ -35,11 +35,15 @@ namespace FirstOption.RevitMcp.Addin
 
             Panel = new McpPanel();
             application.RegisterDockablePane(PaneId, "FirstOption MCP", Panel);
+
+            // Track the Revit undo list from the start, so agent runs can be undone and checked later.
+            Undo.UndoJournal.Attach(application);
             return Result.Succeeded;
         }
 
         public Result OnShutdown(UIControlledApplication application)
         {
+            Undo.UndoJournal.Detach(application);
             Panel?.Stop();
             return Result.Succeeded;
         }

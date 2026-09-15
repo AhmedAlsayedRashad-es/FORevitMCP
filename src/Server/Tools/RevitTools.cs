@@ -55,17 +55,28 @@ public sealed class RevitTools(RoutesClient routes)
         "Names you get: doc, uidoc, uiapp, app, DB (Autodesk.Revit.DB), UI (Autodesk.Revit.UI), args (dict from args_json). " +
         "print() output is returned. Set a variable named result to return a value. " +
         "By default the code runs inside one Transaction that commits on success and rolls back on error; pass use_transaction=false when the code opens its own transactions, or works on a family document it creates. " +
+        "The whole run is one entry in the Revit undo list (runId and undoName in the answer), and a failed run leaves no change. To reverse runs, use revit_undo. " +
         "Search the command library (library_search) before you write new code.")]
     public Task<string> ExecutePython(
         McpServer server,
         [Description("Python source. Keep it IronPython-compatible unless revit_status shows a Python 3 engine.")] string code,
+        // optional in the schema so that a missing name gets the clear ToolError from ExecuteAsync, not the SDK's generic error
+        [Description(CommandNameDoc)] string command_name = null,
         [Description("Routes port. Optional when only one Revit runs.")] int? port = null,
         [Description("Wrap the code in one Transaction (default true).")] bool use_transaction = true,
-        [Description("Name of the Transaction in the Revit undo list.")] string transaction_name = null,
+        [Description("Name of the run in the Revit undo list (a '#N' number is added).")] string transaction_name = null,
         [Description("JSON object that the code reads as args.")] string args_json = null,
         [Description("Seconds to wait for Revit (default 120).")] int timeout_seconds = 120,
+        [Description(UndoGroupDoc)] bool undo_group = true,
         CancellationToken ct = default) =>
-        Json.Guard(() => ExecuteAsync(routes, server, "ironpython", code, null, port, use_transaction, transaction_name, args_json, timeout_seconds, ct));
+        Json.Guard(() => ExecuteAsync(routes, server, "ironpython", code, command_name, port, use_transaction, undo_group, transaction_name, args_json, timeout_seconds, ct));
+
+    internal const string CommandNameDoc =
+        "Required. Short name of the run, for example 'Create grids' (3-6 words). The Revit MCP panel and the activity log show it, and the Revit undo list uses it when transaction_name is empty.";
+
+    internal const string UndoGroupDoc =
+        "Make the whole run one entry in the Revit undo list (default true); a failed run then leaves no change. " +
+        "Pass false only when the code must save, synchronize or close the document. Ask the user first: Undo cannot reverse those runs fully.";
 
     [McpServerTool(Name = "revit_execute_csharp"), Description(
         "Compile and run C# inside Revit with Roslyn (needs the FirstOption Revit add-in). Write a method BODY, not a class: " +
@@ -76,18 +87,24 @@ public sealed class RevitTools(RoutesClient routes)
     public Task<string> ExecuteCSharp(
         McpServer server,
         [Description("C# method body.")] string code,
+        [Description(CommandNameDoc)] string command_name = null,
         [Description("Routes port. Optional when only one Revit runs.")] int? port = null,
         [Description("Wrap the code in one Transaction (default true).")] bool use_transaction = true,
-        [Description("Name of the Transaction in the Revit undo list.")] string transaction_name = null,
+        [Description("Name of the run in the Revit undo list (a '#N' number is added).")] string transaction_name = null,
         [Description("JSON object that the code reads as args.")] string args_json = null,
         [Description("Seconds to wait for Revit (default 120).")] int timeout_seconds = 120,
+        [Description(UndoGroupDoc)] bool undo_group = true,
         CancellationToken ct = default) =>
-        Json.Guard(() => ExecuteAsync(routes, server, "csharp", code, null, port, use_transaction, transaction_name, args_json, timeout_seconds, ct));
+        Json.Guard(() => ExecuteAsync(routes, server, "csharp", code, command_name, port, use_transaction, undo_group, transaction_name, args_json, timeout_seconds, ct));
 
     internal static async Task<object> ExecuteAsync(RoutesClient routes, McpServer server, string language, string code, string commandName,
-        int? port, bool useTransaction, string transactionName, string argsJson, int timeoutSeconds, CancellationToken ct)
+        int? port, bool useTransaction, bool undoGroup, string transactionName, string argsJson, int timeoutSeconds, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(code)) throw new ToolError("The code is empty.");
+        if (string.IsNullOrWhiteSpace(commandName))
+            throw new ToolError("command_name is empty.", "Send a short name of 3-6 words for the run, for example command_name=\"Create grids\". The Revit MCP panel shows it.");
+        commandName = commandName.Trim();
+        var logName = commandName;
 
         JsonNode args = null;
         if (!string.IsNullOrWhiteSpace(argsJson))
@@ -111,24 +128,28 @@ public sealed class RevitTools(RoutesClient routes)
             {
                 code,
                 use_transaction = useTransaction,
+                undo_group = undoGroup,
                 transaction_name = string.IsNullOrWhiteSpace(transactionName) ? "FirstOption MCP" + (commandName != null ? ": " + commandName : "") : transactionName,
                 args,
             }, timeoutSeconds, ct);
         }
         catch (ToolError e)
         {
-            Log(client, inst, language, commandName, code, null, e.Message, false, RoutesClient.Elapsed(sw), inst.Document);
+            Log(client, inst, language, logName, code, null, e.Message, false, RoutesClient.Elapsed(sw), inst.Document, null, null);
             throw;
         }
 
         var ok = r["ok"] is JsonValue v && v.TryGetValue<bool>(out var b) && b;
         var error = Join(r["error"]?.ToString(), r["traceback"]?.ToString(), r["diagnostics"] is JsonArray d ? string.Join("\n", d.Select(x => x?.ToString())) : null);
         var duration = r["durationMs"] is JsonValue dv && dv.TryGetValue<long>(out var ms) ? ms : RoutesClient.Elapsed(sw);
-        Log(client, inst, language, commandName, code, r["output"]?.ToString(), error, ok, duration, r["document"]?.ToString() ?? inst.Document);
+        Log(client, inst, language, logName, code, r["output"]?.ToString(), error, ok, duration, r["document"]?.ToString() ?? inst.Document,
+            r["runId"]?.ToString(), r["undoName"]?.ToString());
 
         r["port"] = inst.Port;
         r["revitVersion"] ??= inst.RevitVersion;
         if (!ok) r["hint"] ??= "Read the error, fix the code, and run it again. Nothing was committed when the transaction rolled back.";
+        else if (r["sideEffects"] is JsonArray se && se.Count > 0)
+            r["hint"] ??= "Undo cannot reverse what 'sideEffects' lists. Tell the user.";
         return r;
     }
 
@@ -140,7 +161,8 @@ public sealed class RevitTools(RoutesClient routes)
         return name;
     }
 
-    private static void Log(string client, RevitInstance inst, string language, string commandName, string code, string output, string error, bool ok, long durationMs, string document)
+    private static void Log(string client, RevitInstance inst, string language, string commandName, string code, string output, string error, bool ok, long durationMs, string document,
+        string runId, string undoName)
     {
         try
         {
@@ -157,6 +179,8 @@ public sealed class RevitTools(RoutesClient routes)
                 Ok = ok,
                 DurationMs = durationMs,
                 Document = document,
+                RunId = runId,
+                UndoName = undoName,
             });
         }
         catch

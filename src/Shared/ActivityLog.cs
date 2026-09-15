@@ -13,6 +13,8 @@ namespace FirstOption.RevitMcp.Shared
         public const string Execute = "execute";
         public const string LibrarySave = "library_save";
         public const string GitHubPush = "github_push";
+        public const string Undo = "undo";
+        public const string Reset = "reset";
     }
 
     [DataContract]
@@ -36,6 +38,8 @@ namespace FirstOption.RevitMcp.Shared
         [DataMember(Name = "commit")] public string Commit { get; set; }
         [DataMember(Name = "url")] public string Url { get; set; }
         [DataMember(Name = "files")] public int Files { get; set; }
+        [DataMember(Name = "runId")] public string RunId { get; set; }
+        [DataMember(Name = "undoName")] public string UndoName { get; set; }
 
         public DateTime LocalTime
         {

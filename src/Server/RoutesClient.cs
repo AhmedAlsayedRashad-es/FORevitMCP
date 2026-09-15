@@ -17,6 +17,7 @@ public sealed class RevitInstance
     public string PyRevit { get; set; }
     public string Python { get; set; }
     public bool CSharpRunner { get; set; }
+    public bool UndoJournal { get; set; }
     public string Bridge { get; set; }
 }
 
@@ -119,6 +120,7 @@ public sealed class RoutesClient
                 PyRevit = n["pyrevit"]?.ToString(),
                 Python = n["python"]?.ToString(),
                 CSharpRunner = n["csharpRunner"]?.GetValue<bool>() ?? false,
+                UndoJournal = n["undoJournal"]?.GetValue<bool>() ?? false,
                 Bridge = n["bridge"]?.ToString(),
             };
         }

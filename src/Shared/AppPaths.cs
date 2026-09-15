@@ -21,7 +21,8 @@ namespace FirstOption.RevitMcp.Shared
         public static string LibraryPanelDir(string libraryRoot) =>
             Path.Combine(libraryRoot, LibraryExtensionFolder, LibraryTabFolder, LibraryPanelFolder);
 
-        /// <summary>%LOCALAPPDATA%\FirstOption\RevitMCP, or the FO_REVIT_MCP_HOME environment variable (used by tests).</summary>
+        /// <summary>%LOCALAPPDATA%\First Option\RevitMCP, or the FO_REVIT_MCP_HOME environment variable (used by tests).
+        /// All files of the MCP live under this folder; only the Revit .addin manifest and the agent skills live elsewhere.</summary>
         public static string DataDir
         {
             get
@@ -29,18 +30,31 @@ namespace FirstOption.RevitMcp.Shared
                 var over = Environment.GetEnvironmentVariable("FO_REVIT_MCP_HOME");
                 var dir = !string.IsNullOrWhiteSpace(over)
                     ? over
-                    : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FirstOption", "RevitMCP");
+                    : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "First Option", "RevitMCP");
                 Directory.CreateDirectory(dir);
                 return dir;
             }
         }
 
-        public static string SettingsFile => Path.Combine(DataDir, "settings.json");
+        public const string ServerFolder = "Server";
+        public const string AddinFolder = "Revit Add-in";
+        public const string BridgeFolder = "pyRevit Bridge";
+        public const string LibraryFolder = "Command Library";
+        public const string ActivityFolder = "Activity Log";
+        public const string SettingsFolder = "Settings";
+
+        public static string SettingsFile => InDataDir(SettingsFolder, "settings.json");
 
         /// <summary>One JSON object per line. The MCP server writes it; the Revit panel reads it.</summary>
-        public static string ActivityFile => Path.Combine(DataDir, "activity.jsonl");
+        public static string ActivityFile => InDataDir(ActivityFolder, "activity.jsonl");
 
-        public static string DefaultLibraryPath =>
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "FirstOption", "RevitCommandLibrary");
+        public static string DefaultLibraryPath => Path.Combine(DataDir, LibraryFolder);
+
+        private static string InDataDir(string folder, string file)
+        {
+            var dir = Path.Combine(DataDir, folder);
+            Directory.CreateDirectory(dir);
+            return Path.Combine(dir, file);
+        }
     }
 }

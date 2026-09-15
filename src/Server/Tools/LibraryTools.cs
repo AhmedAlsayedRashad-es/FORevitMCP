@@ -85,6 +85,7 @@ public sealed class LibraryTools(RoutesClient routes)
         [Description("Routes port. Optional when only one Revit runs.")] int? port = null,
         [Description("Wrap the run in one Transaction (default true).")] bool use_transaction = true,
         [Description("Seconds to wait for Revit (default 120).")] int timeout_seconds = 120,
+        [Description(RevitTools.UndoGroupDoc)] bool undo_group = true,
         CancellationToken ct = default) => Json.Guard(async () =>
     {
         var (meta, code, _) = CommandLibrary.Get(name);
@@ -92,7 +93,7 @@ public sealed class LibraryTools(RoutesClient routes)
             throw new ToolError($"'{name}' is a CPython command. The MCP runs IronPython and C# only.",
                 "Ask the user to click the button on the 'FO Library' tab, or save an IronPython version of the command.");
 
-        var result = await RevitTools.ExecuteAsync(routes, server, meta.Language, code, meta.Name, port, use_transaction, null, args_json, timeout_seconds, ct);
+        var result = await RevitTools.ExecuteAsync(routes, server, meta.Language, code, meta.Name, port, use_transaction, undo_group, null, args_json, timeout_seconds, ct);
         var node = result as System.Text.Json.Nodes.JsonObject;
         var ok = node?["ok"]?.GetValue<bool>() ?? false;
         CommandLibrary.RecordRun(meta.Name, ok, node?["revitVersion"]?.ToString());
