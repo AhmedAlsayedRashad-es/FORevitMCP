@@ -36,6 +36,7 @@ builder.Services
     })
     .WithStdioServerTransport()
     .WithTools<RevitTools>()
+    .WithTools<UndoTools>()
     .WithTools<LibraryTools>()
     .WithTools<GitHubTools>();
 

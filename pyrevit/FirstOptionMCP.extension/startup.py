@@ -7,6 +7,13 @@ Routes API named "fo-mcp":
     GET  http://127.0.0.1:<port>/fo-mcp/status/          no Revit context
     POST http://127.0.0.1:<port>/fo-mcp/execute/         Python, Revit main thread
     POST http://127.0.0.1:<port>/fo-mcp/execute-csharp/  C#, through the FirstOption add-in
+    POST http://127.0.0.1:<port>/fo-mcp/undo-history/    the Revit undo list as the add-in sees it
+    POST http://127.0.0.1:<port>/fo-mcp/undo-baseline/   mark the current state
+    POST http://127.0.0.1:<port>/fo-mcp/undo/            plan or start an undo of agent runs
+    POST http://127.0.0.1:<port>/fo-mcp/undo-status/     progress and check of the running undo
+    POST http://127.0.0.1:<port>/fo-mcp/reset/           reopen the last saved file, discard changes
+
+Every run is wrapped in a TransactionGroup (the add-in's RunScope), so one run is one entry in the Revit undo list.
 
 The FirstOption Revit MCP server (FirstOption.RevitMcp.exe) calls these routes.
 Keep this file Python 2.7 and Python 3 compatible (no f-strings).
@@ -28,10 +35,12 @@ try:
 except ImportError:
     from io import StringIO
 
-BRIDGE_VERSION = "0.1.0"
+BRIDGE_VERSION = "0.2.0"
 MAX_OUTPUT = 50000
 RUNNER_ASSEMBLY = "FirstOption.RevitMcp.Addin"
 RUNNER_TYPE = "FirstOption.RevitMcp.Addin.CSharp.CSharpRunner"
+RUN_SCOPE_TYPE = "FirstOption.RevitMcp.Addin.Undo.RunScope"
+UNDO_API_TYPE = "FirstOption.RevitMcp.Addin.Undo.UndoApi"
 
 api = routes.API("fo-mcp")
 
@@ -74,16 +83,57 @@ def _doc_title():
     return _safe(get)
 
 
-def _find_runner():
+def _find_addin_type(type_name):
     for asm in System.AppDomain.CurrentDomain.GetAssemblies():
         try:
             if asm.GetName().Name == RUNNER_ASSEMBLY:
-                runner = asm.GetType(RUNNER_TYPE)
-                if runner is not None:
-                    return runner
+                found = asm.GetType(type_name)
+                if found is not None:
+                    return found
         except Exception:
             continue
     return None
+
+
+def _find_runner():
+    return _find_addin_type(RUNNER_TYPE)
+
+
+def _begin_run(uiapp, doc, name, undo_group):
+    """One run = one entry in the Revit undo list. The add-in also records the run in its undo journal."""
+    if doc is None:
+        return None
+    scope_type = _find_addin_type(RUN_SCOPE_TYPE)
+    if scope_type is not None:
+        args = System.Array[System.Object]([uiapp, name, "ironpython", bool(undo_group)])
+        return ("addin", scope_type.GetMethod("Begin").Invoke(None, args))
+    if undo_group and not doc.IsModifiable:
+        group = DB.TransactionGroup(doc, name)
+        group.Start()
+        return ("plain", group)
+    return None
+
+
+def _end_run(run, ok):
+    """Returns (extra response fields, error or None)."""
+    if run is None:
+        return {}, None
+    kind, obj = run
+    if kind == "addin":
+        obj.End(bool(ok))
+        return json.loads(str(obj.DescribeJson())), (str(obj.Error) if obj.Error else None)
+    try:
+        if obj.HasStarted() and not obj.HasEnded():
+            if ok:
+                obj.Assimilate()
+            else:
+                obj.RollBack()
+        return {"undoNotes": ["The FirstOption add-in is not loaded: the run is one undo entry, but it is not tracked."]}, None
+    except Exception as ex:
+        _safe(lambda: obj.RollBack())
+        return {}, "The undo group did not close ({}). The run was rolled back.".format(ex)
+    finally:
+        _safe(lambda: obj.Dispose())
 
 
 def _element_id(eid):
@@ -156,6 +206,7 @@ def status(request):
         "pyrevit": _pyrevit_version(),
         "python": sys.version.split("\n")[0],
         "csharpRunner": _find_runner() is not None,
+        "undoJournal": _find_addin_type(UNDO_API_TYPE) is not None,
     })
 
 
@@ -165,6 +216,7 @@ def execute(request, uiapp):
     code = payload.get("code") or ""
     use_tx = payload.get("use_transaction", True)
     tx_name = payload.get("transaction_name") or "FirstOption MCP"
+    undo_group = payload.get("undo_group", True)
     args = payload.get("args") or {}
 
     uidoc = uiapp.ActiveUIDocument
@@ -185,10 +237,11 @@ def execute(request, uiapp):
     out = StringIO()
     old_out, old_err = sys.stdout, sys.stderr
     started = time.time()
-    ok, error, tb, tx = True, None, None, None
+    ok, error, tb, tx, run = True, None, None, None, None
     try:
         sys.stdout, sys.stderr = out, out
         compiled = compile(_prepare(code), "<fo-mcp>", "exec")
+        run = _begin_run(uiapp, doc, tx_name, undo_group)
         if use_tx and doc is not None and not doc.IsModifiable:
             tx = DB.Transaction(doc, tx_name)
             tx.Start()
@@ -208,7 +261,15 @@ def execute(request, uiapp):
         if tx is not None:
             _safe(lambda: tx.Dispose())
 
-    return routes.make_response(data={
+    run_info, run_error = {}, None
+    try:
+        run_info, run_error = _end_run(run, ok)
+    except Exception as ex:
+        run_error = "The undo group did not close: {}".format(ex)
+    if run_error and ok:
+        ok, error = False, run_error
+
+    data = {
         "ok": ok,
         "language": "ironpython" if "IronPython" in sys.version else "python",
         "output": _cut(out.getvalue()),
@@ -219,7 +280,9 @@ def execute(request, uiapp):
         "document": _safe(lambda: doc.Title) if doc is not None else None,
         "revitVersion": _safe(lambda: str(HOST_APP.version)),
         "transaction": tx_name if tx is not None else None,
-    })
+    }
+    data.update(run_info or {})
+    return routes.make_response(data=data)
 
 
 @api.route("/execute-csharp/", methods=["POST"])
@@ -245,3 +308,47 @@ def execute_csharp(request, uiapp):
             "error": "{}: {}".format(type(ex).__name__, ex),
             "traceback": traceback.format_exc(),
         })
+
+
+def _undo_api(method_name, request, uiapp):
+    api_type = _find_addin_type(UNDO_API_TYPE)
+    if api_type is None:
+        return routes.make_response(data={
+            "ok": False,
+            "error": "The FirstOption MCP Revit add-in with undo tracking is not loaded in this Revit.",
+        })
+    try:
+        args = System.Array[System.Object]([uiapp, json.dumps(_payload(request))])
+        text = api_type.GetMethod(method_name).Invoke(None, args)
+        return routes.make_response(data=json.loads(str(text)))
+    except Exception as ex:
+        return routes.make_response(data={
+            "ok": False,
+            "error": "{}: {}".format(type(ex).__name__, ex),
+            "traceback": traceback.format_exc(),
+        })
+
+
+@api.route("/undo-history/", methods=["POST"])
+def undo_history(request, uiapp):
+    return _undo_api("HistoryJson", request, uiapp)
+
+
+@api.route("/undo-baseline/", methods=["POST"])
+def undo_baseline(request, uiapp):
+    return _undo_api("BaselineJson", request, uiapp)
+
+
+@api.route("/undo/", methods=["POST"])
+def undo(request, uiapp):
+    return _undo_api("UndoJson", request, uiapp)
+
+
+@api.route("/undo-status/", methods=["POST"])
+def undo_status(request, uiapp):
+    return _undo_api("StatusJson", request, uiapp)
+
+
+@api.route("/reset/", methods=["POST"])
+def reset(request, uiapp):
+    return _undo_api("ResetJson", request, uiapp)

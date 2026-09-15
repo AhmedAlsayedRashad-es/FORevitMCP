@@ -20,7 +20,16 @@ Workflow:
 
 Rules:
 - Revit units are internal feet. Convert with UnitUtils or divide mm by 304.8.
+- revit_execute_python and revit_execute_csharp need command_name (3-6 words, for example 'Create grids'). The Revit MCP panel shows it.
 - The code runs in one Transaction by default. Pass use_transaction=false when the code opens its own transactions or creates/edits a family document.
 - A modal dialog in Revit blocks the API. When a call times out, ask the user to check Revit.
-- Do not delete or purge elements the user did not ask for.";
+- Do not delete or purge elements the user did not ask for.
+
+Undo and safety:
+- Every run is one entry in the Revit undo list (runId and undoName in the answer). A failed run is rolled back completely.
+- Before a task with several steps that change the model, call revit_baseline.
+- To reverse agent runs, call revit_undo (runs, to_run_id or to_baseline). Never reverse a run by writing new code (deleting what you made, setting old values back).
+- revit_undo refuses when changes by the user would be lost. Ask the user before you pass include_user_changes=true.
+- Ask the user before any action that Undo cannot reverse: save, synchronize with central, close a document, save a family file, undo_group=false. Tell the user about 'sideEffects' in a run answer.
+- revit_reset discards every unsaved change. Use it only when the user asks.";
 }

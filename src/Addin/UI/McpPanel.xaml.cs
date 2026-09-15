@@ -23,7 +23,19 @@ namespace FirstOption.RevitMcp.Addin.UI
 
         public ActivityEntry Entry { get; }
         public string Id => Entry.Id;
-        public string Name => string.IsNullOrEmpty(Entry.CommandName) ? "ad-hoc script" : Entry.CommandName;
+        public string Name =>
+            Entry.Kind == ActivityKinds.Undo || Entry.Kind == ActivityKinds.Reset ? Entry.Message ?? Entry.Kind
+            : string.IsNullOrEmpty(Entry.CommandName) ? NameFromCode(Entry.Code) : Entry.CommandName;
+
+        /// <summary>For runs logged without a name: the first comment of the code, else its first line.</summary>
+        private static string NameFromCode(string code)
+        {
+            var lines = (code ?? "").Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0 && !l.StartsWith("using ") && !l.StartsWith("import ") && !l.StartsWith("from ")).ToList();
+            var comment = lines.FirstOrDefault(l => l.StartsWith("//") || l.StartsWith("#"));
+            var text = comment != null ? comment.TrimStart('/', '#', ' ') : lines.FirstOrDefault();
+            if (string.IsNullOrEmpty(text)) return "Unnamed run";
+            return text.Length <= 48 ? text : text.Substring(0, 45) + "...";
+        }
         public string StatusGlyph => Entry.Ok ? "✓" : "✗";
         public Brush StatusBrush => Entry.Ok ? OkBrush : ErrorBrush;
         public string TimeText => Entry.LocalTime.ToString("HH:mm:ss");
@@ -163,7 +175,8 @@ namespace FirstOption.RevitMcp.Addin.UI
             var last = executes.LastOrDefault();
             LastCallText.Text = last == null ? "-" : last.LocalTime.ToString("HH:mm:ss") + (string.IsNullOrEmpty(last.Client) ? "" : " by " + last.Client);
 
-            var visible = executes.Where(e => e.LocalTime > _clearedAt).Reverse().Take(200).ToList();
+            var listed = entries.Where(e => (e.Kind == ActivityKinds.Execute || e.Kind == ActivityKinds.Undo || e.Kind == ActivityKinds.Reset) && (_myPort == 0 || e.Port == _myPort));
+            var visible = listed.Where(e => e.LocalTime > _clearedAt).Reverse().Take(200).ToList();
             var newest = visible.FirstOrDefault()?.Id;
             if (newest != _newestId || visible.Count != _rows.Count)
             {

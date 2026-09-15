@@ -34,7 +34,7 @@ See [docs/REQUIRED-APPS.md](docs/REQUIRED-APPS.md): Revit, pyRevit (+ CLI), .NET
 
 ## 2. Build and install
 
-Close Revit. Then, in PowerShell, in this folder:
+Close Revit and every Claude Code and Codex session (the script stops when they run). Then, in PowerShell, in this folder:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\install.ps1 -RegisterClaude -RegisterCodex
@@ -42,18 +42,21 @@ powershell -ExecutionPolicy Bypass -File scripts\install.ps1 -RegisterClaude -Re
 
 The script does these steps (use `-DryRun` to see them first, `-RevitVersions 2025,2026` to limit the versions):
 
-1. Publishes the MCP server to `%LOCALAPPDATA%\FirstOption\RevitMCP\server\FirstOption.RevitMcp.exe`.
-2. Builds the add-in for each installed Revit and copies it to `%APPDATA%\Autodesk\Revit\Addins\<version>\`.
-3. Adds `pyrevit\` and the command library to the pyRevit extension paths, and turns on pyRevit Routes.
-4. Copies the skills to `~\.claude\skills` and `~\.codex\skills`.
-5. Registers the MCP server in Claude Code and Codex.
+1. Moves the files from the old folders of version 0.1.0 (`%LOCALAPPDATA%\FirstOption\RevitMCP`, `Documents\FirstOption\RevitCommandLibrary`, the add-in folders in `%APPDATA%\Autodesk\Revit\Addins`) and deletes those folders.
+2. Publishes the MCP server to `%LOCALAPPDATA%\First Option\RevitMCP\Server`.
+3. Builds the add-in for each installed Revit, copies it to `%LOCALAPPDATA%\First Option\RevitMCP\Revit Add-in\<version>`, and writes `FirstOption.RevitMcp.addin` in `%APPDATA%\Autodesk\Revit\Addins\<version>`.
+4. Copies the pyRevit bridge to `%LOCALAPPDATA%\First Option\RevitMCP\pyRevit Bridge`, adds the bridge and the command library to the pyRevit extension paths, and turns on pyRevit Routes.
+5. Copies the skills to `~\.claude\skills` and `~\.codex\skills`.
+6. Registers the MCP server in Claude Code and Codex. A registration that already exists gets the new server path.
+
+Run the script again after each change to the code. Revit and the agents use the installed copy, not this folder.
 
 ## 3. Register the MCP server by hand (when you did not use -RegisterClaude / -RegisterCodex)
 
 ### Claude Code
 
 ```powershell
-claude mcp add --scope user firstoption-revit -- "$env:LOCALAPPDATA\FirstOption\RevitMCP\server\FirstOption.RevitMcp.exe"
+claude mcp add --scope user firstoption-revit -- "$env:LOCALAPPDATA\First Option\RevitMCP\Server\FirstOption.RevitMcp.exe"
 claude mcp list
 ```
 
@@ -62,7 +65,7 @@ For one project only, use `--scope project`. Claude Code then writes `.mcp.json`
 ### Codex CLI
 
 ```powershell
-codex mcp add firstoption-revit -- "$env:LOCALAPPDATA\FirstOption\RevitMCP\server\FirstOption.RevitMcp.exe"
+codex mcp add firstoption-revit -- "$env:LOCALAPPDATA\First Option\RevitMCP\Server\FirstOption.RevitMcp.exe"
 codex mcp list
 ```
 
@@ -70,7 +73,7 @@ Revit work can take longer than the Codex default tool timeout. Add the timeouts
 
 ```toml
 [mcp_servers.firstoption-revit]
-command = 'C:\Users\<you>\AppData\Local\FirstOption\RevitMCP\server\FirstOption.RevitMcp.exe'
+command = 'C:\Users\<you>\AppData\Local\First Option\RevitMCP\Server\FirstOption.RevitMcp.exe'
 startup_timeout_sec = 20
 tool_timeout_sec = 300
 ```
@@ -78,14 +81,14 @@ tool_timeout_sec = 300
 ### Check
 
 ```powershell
-& "$env:LOCALAPPDATA\FirstOption\RevitMCP\server\FirstOption.RevitMcp.exe" doctor
+& "$env:LOCALAPPDATA\First Option\RevitMCP\Server\FirstOption.RevitMcp.exe" doctor
 ```
 
 ## 4. pyRevit setup (the script does this when the `pyrevit` CLI is on PATH)
 
 ```powershell
-pyrevit extensions paths add "<this folder>\pyrevit"
-pyrevit extensions paths add "$env:USERPROFILE\Documents\FirstOption\RevitCommandLibrary"
+pyrevit extensions paths add "$env:LOCALAPPDATA\First Option\RevitMCP\pyRevit Bridge"
+pyrevit extensions paths add "$env:LOCALAPPDATA\First Option\RevitMCP\Command Library"
 pyrevit configs routes enable
 ```
 
@@ -126,6 +129,10 @@ Copy-Item skills\* "$HOME\.codex\skills" -Recurse -Force
 | `revit_status` | One session, plus the languages you can use, the library folder and the GitHub state |
 | `revit_execute_python` | Runs Python in Revit (`doc`, `uidoc`, `uiapp`, `app`, `DB`, `UI`, `args`; `result`), inside one transaction by default |
 | `revit_execute_csharp` | Compiles and runs a C# method body in Revit with Roslyn (`uiapp`, `uidoc`, `doc`, `app`, `args`, `Console`) |
+| `revit_undo_history` | The Revit undo list as the add-in tracked it: agent runs and user changes, done or undone, with an element check for undone entries |
+| `revit_baseline` | Marks the current state; `revit_undo to_baseline=true` goes back to it |
+| `revit_undo` | Undoes the last agent runs (`runs`, `to_run_id` or `to_baseline`) in order, presses Undo in Revit step by step, and checks the elements; `mode=manual` gives instructions only |
+| `revit_reset` | Closes the model without saving and opens the last saved file (asks for `confirm=true`) |
 | `library_search` | Searches saved commands |
 | `library_get` | Reads a command's metadata and code |
 | `library_save` | Saves working code as a command (pyRevit button + metadata); auto-pushes when that is on |
@@ -133,6 +140,16 @@ Copy-Item skills\* "$HOME\.codex\skills" -Recurse -Force
 | `library_info` | Library folder, command count, how to show the buttons |
 | `github_status` | GitHub settings and local git state |
 | `github_push` | Commits and pushes the library; the Revit panel shows a notice |
+
+## Undo agent runs
+
+- Every run (`revit_execute_python`, `revit_execute_csharp`, `library_run`) is wrapped in a `TransactionGroup` and merged into **one** entry in the Revit undo list, named `FirstOption MCP #N`, `FirstOption MCP: <command_name> #N`, or `<transaction_name> #N`. `command_name` is required; the Revit MCP panel shows it. The answer has `runId`, `undoName` and the element counts.
+- A failed run rolls back completely, also with `use_transaction=false`.
+- The add-in follows the undo list of every open document (`DocumentChanged`: commit, undo, redo). It knows which entries are agent runs and which are changes by the user.
+- `revit_undo` refuses when user changes lie above the target. With `include_user_changes=true` it goes on.
+- In `mode=auto` it posts Revit's own Undo command one step at a time, checks the name of each undone entry, and stops at the first step it did not expect. Then it checks that added elements are gone and deleted or modified elements exist again.
+- Undo cannot reverse: a save to disk, Synchronize with Central (it also clears the undo list), and changes in other documents. A run answer lists these in `sideEffects`.
+- Pass `undo_group=false` only when the code must save, synchronize or close the document.
 
 ## Languages
 
@@ -146,10 +163,10 @@ pyRevit can run IronPython, CPython 3, C# and VB.NET scripts. Through this MCP:
 
 ## The command library
 
-Default folder: `%USERPROFILE%\Documents\FirstOption\RevitCommandLibrary` (change it in GitHub Settings).
+Default folder: `%LOCALAPPDATA%\First Option\RevitMCP\Command Library` (change it in GitHub Settings).
 
 ```
-RevitCommandLibrary/
+Command Library/
   README.md                          table of commands (written by the MCP)
   index.json                         the same, for agents
   FirstOptionLibrary.extension/
@@ -172,11 +189,23 @@ RevitCommandLibrary/
 
 ## Files on this computer
 
-| File | Written by |
+All files are in one folder, `%LOCALAPPDATA%\First Option\RevitMCP`:
+
+| Folder | What it holds | Written by |
+|---|---|---|
+| `Server\` | The MCP server, `FirstOption.RevitMcp.exe` | `install.ps1` |
+| `Revit Add-in\<version>\` | The Revit add-in for each Revit version | `install.ps1` |
+| `pyRevit Bridge\` | The pyRevit extension with `startup.py` (the `fo-mcp` Routes API) | `install.ps1` |
+| `Command Library\` | The saved commands (a pyRevit extension) | MCP server (`library_save`) |
+| `Activity Log\activity.jsonl` | Every run, with name, code, output and error (the panel reads it) | MCP server |
+| `Settings\settings.json` | GitHub and Routes settings (the MCP reads it on each call) | GitHub Settings window |
+
+Only two things are outside this folder, because Revit and the agents look only in their own folders:
+
+| File | Why |
 |---|---|
-| `%LOCALAPPDATA%\FirstOption\RevitMCP\settings.json` | GitHub Settings window (the MCP reads it on each call) |
-| `%LOCALAPPDATA%\FirstOption\RevitMCP\activity.jsonl` | MCP server (the panel reads it) |
-| `%LOCALAPPDATA%\FirstOption\RevitMCP\server\` | `install.ps1` |
+| `%APPDATA%\Autodesk\Revit\Addins\<version>\FirstOption.RevitMcp.addin` | Revit loads add-ins from here. The file points to `Revit Add-in\<version>`. |
+| `~\.claude\skills`, `~\.codex\skills` | Claude Code and Codex read skills from here. |
 
 Advanced settings in `settings.json`: `routesHost` (default `127.0.0.1`), `portStart` (48884), `portCount` (10), `remoteUrl` (a git remote that is not github.com).
 
@@ -184,7 +213,7 @@ Advanced settings in `settings.json`: `routesHost` (default `127.0.0.1`), `portS
 
 | Problem | Fix |
 |---|---|
-| Panel: "pyRevit Routes offline" | pyRevit > Settings > Routes: turn on the server, Save, Reload. Check `pyrevit extensions paths` lists `pyrevit\`. |
+| Panel: "pyRevit Routes offline" | pyRevit > Settings > Routes: turn on the server, Save, Reload. Check `pyrevit extensions paths` lists `%LOCALAPPDATA%\First Option\RevitMCP\pyRevit Bridge`. |
 | Panel: bridge answers for another Revit | Reload pyRevit in this Revit. |
 | Tool: "The C# runner is not loaded" | Install the add-in for this Revit version (`install.ps1 -RevitVersions 2026`) and restart Revit. |
 | Tool times out | A dialog is open in Revit, or Revit is busy. Close the dialog. |

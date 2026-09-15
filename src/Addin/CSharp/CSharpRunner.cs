@@ -49,6 +49,7 @@ namespace FirstOption.RevitMcp.Addin.CSharp
                 var code = request.TryGetValue("code", out var c) ? c as string ?? "" : "";
                 var useTransaction = !request.TryGetValue("use_transaction", out var u) || !(u is bool) || (bool)u;
                 var transactionName = request.TryGetValue("transaction_name", out var t) && t is string ts && ts.Length > 0 ? ts : "FirstOption MCP";
+                var undoGroup = !request.TryGetValue("undo_group", out var g) || !(g is bool) || (bool)g;
                 var args = request.TryGetValue("args", out var a) && a is Dictionary<string, object> ad ? ad : new Dictionary<string, object>();
 
                 var uidoc = uiapp.ActiveUIDocument;
@@ -64,6 +65,7 @@ namespace FirstOption.RevitMcp.Addin.CSharp
                 }
                 else
                 {
+                    var run = Undo.RunScope.Begin(uiapp, transactionName, "csharp", undoGroup);
                     Transaction tx = null;
                     try
                     {
@@ -107,6 +109,14 @@ namespace FirstOption.RevitMcp.Addin.CSharp
                     {
                         tx?.Dispose();
                     }
+
+                    run.End(ok);
+                    if (run.Error != null && ok)
+                    {
+                        ok = false;
+                        response["error"] = run.Error;
+                    }
+                    foreach (var kv in run.Describe()) response[kv.Key] = kv.Value;
                 }
             }
             catch (Exception ex)
