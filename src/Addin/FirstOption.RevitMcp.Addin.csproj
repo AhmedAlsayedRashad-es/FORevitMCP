@@ -2,13 +2,14 @@
   <!--
     One project, one Revit version per build:
       dotnet build -c Release -p:RevitVersion=2026   (2025-2026: net8.0-windows)
-      dotnet build -c Release -p:RevitVersion=2024   (2021-2024: net48)
+      dotnet build -c Release -p:RevitVersion=2024   (2021-2024: net48, 2020: net472)
   -->
   <PropertyGroup>
     <RevitVersion Condition="'$(RevitVersion)' == ''">2026</RevitVersion>
     <TargetFramework Condition="$(RevitVersion) &gt;= 2027">net10.0-windows</TargetFramework>
     <TargetFramework Condition="$(RevitVersion) &gt;= 2025 And $(RevitVersion) &lt; 2027">net8.0-windows</TargetFramework>
-    <TargetFramework Condition="$(RevitVersion) &lt; 2025">net48</TargetFramework>
+    <TargetFramework Condition="$(RevitVersion) &gt;= 2021 And $(RevitVersion) &lt; 2025">net48</TargetFramework>
+    <TargetFramework Condition="$(RevitVersion) &lt; 2021">net472</TargetFramework>
     <OutputType>Library</OutputType>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
@@ -33,7 +34,7 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+  <ItemGroup Condition="$(TargetFramework.StartsWith('net4'))">
     <Reference Include="System.Security" />
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Runtime.Serialization" />

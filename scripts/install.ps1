@@ -174,7 +174,7 @@ function Find-RevitVersions {
 
 # The add-in is built for every Revit version the project supports, whether or not that Revit is on this computer.
 # Revit reads only the manifest of the versions it has, so the extra files do nothing.
-$AllVersions = 2021..2027 | ForEach-Object { "$_" }
+$AllVersions = 2020..2026 | ForEach-Object { "$_" }
 
 $installed = Find-RevitVersions
 foreach ($v in ($installed.Keys | Sort-Object)) { Note "Revit ${v} is on this computer: $($installed[$v])" }

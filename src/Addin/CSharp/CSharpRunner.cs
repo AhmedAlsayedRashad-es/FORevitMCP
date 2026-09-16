@@ -319,7 +319,7 @@ namespace FirstOption.RevitMcp.Addin.CSharp
             return value.ToString();
         }
 
-#if REVIT2021 || REVIT2022 || REVIT2023
+#if REVIT2020 || REVIT2021 || REVIT2022 || REVIT2023
         private static object IdValue(ElementId id) => id.IntegerValue;
 #else
         private static object IdValue(ElementId id) => id.Value;
