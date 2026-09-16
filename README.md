@@ -42,12 +42,12 @@ powershell -ExecutionPolicy Bypass -File scripts\install.ps1 -RegisterClaude -Re
 
 The script does these steps (use `-DryRun` to see them first, `-RevitVersions 2025,2026` to limit the versions):
 
-1. Moves the files from the old folders of version 0.1.0 (`%LOCALAPPDATA%\FirstOption\RevitMCP`, `Documents\FirstOption\RevitCommandLibrary`, the add-in folders in `%APPDATA%\Autodesk\Revit\Addins`) and deletes those folders.
-2. Publishes the MCP server to `%LOCALAPPDATA%\First Option\RevitMCP\Server`.
-3. Builds the add-in for Revit 2020 to 2026, whether or not that Revit is on the computer, copies it to `%LOCALAPPDATA%\First Option\RevitMCP\Revit Add-in\<version>`, and writes `FirstOption.RevitMcp.addin` in `%APPDATA%\Autodesk\Revit\Addins\<version>`.
-4. Copies the pyRevit bridge to `%LOCALAPPDATA%\First Option\RevitMCP\pyRevit Bridge`, adds the bridge and the command library to the pyRevit extension paths, and turns on pyRevit Routes.
-5. Copies the skills to `~\.claude\skills` and `~\.codex\skills`.
-6. Registers the MCP server in Claude Code and Codex. A registration that already exists gets the new server path.
+1. Publishes the MCP server to `%LOCALAPPDATA%\First Option\RevitMCP\Server`.
+2. Builds the add-in for Revit 2020 to 2026, whether or not that Revit is on the computer, copies it to `%LOCALAPPDATA%\First Option\RevitMCP\Revit Add-in\<version>`, and writes `FirstOption.RevitMcp.addin` in `%APPDATA%\Autodesk\Revit\Addins\<version>`.
+3. Copies the pyRevit bridge to `%LOCALAPPDATA%\First Option\RevitMCP\pyRevit Bridge`, adds the bridge to the pyRevit extension paths, and turns on pyRevit Routes.
+4. Copies the skills to `~\.claude\skills` and `~\.codex\skills`.
+5. Registers the MCP server in Claude Code (`-RegisterClaude`) and Codex (`-RegisterCodex`).
+6. Checks that every file is installed, and stops with a list of problems when one is missing.
 
 Run the script again after each change to the code. Revit and the agents use the installed copy, not this folder.
 
@@ -219,7 +219,6 @@ Advanced settings in `settings.json`: `routesHost` (default `127.0.0.1`), `portS
 | Tool: "The C# runner is not loaded" | Install the add-in for this Revit version (`install.ps1 -RevitVersions 2026`) and restart Revit. |
 | Install ends with "Install incomplete" | Read the FAIL lines it prints; each line says what to do. The script checks every file it installed. |
 | Install says "No Revit 2021-2026 was found" | Revit is installed in a folder the script does not know. Give the versions yourself: `install.ps1 -RevitVersions 2025,2026`. |
-| Revit shows an add-in error at start | An old manifest points to a folder that is gone. Run `install.ps1` again; it deletes such manifests. |
 | Tool times out | A dialog is open in Revit, or Revit is busy. Close the dialog. |
 | Routes on a different host | Set `routesHost` in `settings.json` to the host in pyRevit Settings > Routes. |
 | `git push failed` | Check the token and the repository in GitHub Settings; use Test connection. |
