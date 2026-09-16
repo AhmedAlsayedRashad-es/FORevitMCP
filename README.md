@@ -55,14 +55,11 @@ Run the script again after each change to the code. Revit and the agents use the
 
 ### Claude Code
 
-```powershell
-claude mcp add --scope user firstoption-revit -- "$env:LOCALAPPDATA\First Option\RevitMCP\Server\FirstOption.RevitMcp.exe"
-claude mcp list
+Paste this in **cmd**:
+
+```bat
+claude mcp add --scope user firstoption-revit -- "%LOCALAPPDATA%\First Option\RevitMCP\Server\FirstOption.RevitMcp.exe"
 ```
-
-Run this command in **PowerShell**. In cmd or Git Bash, `$env:LOCALAPPDATA` stays as text in the path, Claude Code cannot start the server, and the tools show "Connection closed" while the Revit panel shows online. `claude mcp get firstoption-revit` must show the full path `C:\Users\<you>\AppData\Local\...`.
-
-For one project only, use `--scope project`. Claude Code then writes `.mcp.json` in that project.
 
 ### Codex CLI
 
