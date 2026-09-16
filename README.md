@@ -60,6 +60,8 @@ claude mcp add --scope user firstoption-revit -- "$env:LOCALAPPDATA\First Option
 claude mcp list
 ```
 
+Run this command in **PowerShell**. In cmd or Git Bash, `$env:LOCALAPPDATA` stays as text in the path, Claude Code cannot start the server, and the tools show "Connection closed" while the Revit panel shows online. `claude mcp get firstoption-revit` must show the full path `C:\Users\<you>\AppData\Local\...`.
+
 For one project only, use `--scope project`. Claude Code then writes `.mcp.json` in that project.
 
 ### Codex CLI
@@ -217,6 +219,7 @@ Advanced settings in `settings.json`: `routesHost` (default `127.0.0.1`), `portS
 | Panel: "pyRevit Routes offline" | pyRevit > Settings > Routes: turn on the server, Save, Reload. Check `pyrevit extensions paths` lists `%LOCALAPPDATA%\First Option\RevitMCP\pyRevit Bridge`. |
 | Panel: bridge answers for another Revit | Reload pyRevit in this Revit. |
 | Tool: "The C# runner is not loaded" | Install the add-in for this Revit version (`install.ps1 -RevitVersions 2026`) and restart Revit. |
+| Revit panel says online, but the agent tools say "Connection closed" | The panel shows the Revit side only. The agent starts its own server: run `claude mcp get firstoption-revit`, and when the command is not a full path, run `install.ps1 -RegisterClaude`. Then start a new Claude session. |
 | Install ends with "Install incomplete" | Read the FAIL lines it prints; each line says what to do. The script checks every file it installed. |
 | Install says "No Revit 2021-2026 was found" | Revit is installed in a folder the script does not know. Give the versions yourself: `install.ps1 -RevitVersions 2025,2026`. |
 | Tool times out | A dialog is open in Revit, or Revit is busy. Close the dialog. |
