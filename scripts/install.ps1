@@ -72,6 +72,27 @@ function Invoke-Tool([string]$Exe, [string[]]$Arguments, [switch]$AllowFail) {
     if ($LASTEXITCODE -ne 0 -and -not $AllowFail) { throw "$Exe failed with exit code $LASTEXITCODE" }
 }
 
+# Copy-Item -Recurse with -Exclude skips files inside sub-folders in Windows PowerShell 5.1, which left installs
+# with missing files. Copy every file one by one instead, and leave out only the names in $Exclude.
+function Copy-Tree([string]$From, [string]$To, [string[]]$Exclude) {
+    $from = (Resolve-Path $From).Path.TrimEnd('\')
+    $files = Get-ChildItem $from -Recurse -File | Where-Object {
+        $name = $_.Name
+        -not ($Exclude | Where-Object { $name -like $_ }) -and $_.FullName -notlike '*\__pycache__\*'
+    }
+    foreach ($f in $files) {
+        $target = Join-Path $To $f.FullName.Substring($from.Length + 1)
+        New-Item -ItemType Directory -Force (Split-Path $target) | Out-Null
+        Copy-Item $f.FullName $target -Force
+    }
+    Note "copied $(@($files).Count) files -> $To"
+}
+
+# Set-Content -Encoding UTF8 writes a byte order mark in Windows PowerShell 5.1. Revit and pyRevit read these files better without one.
+function Write-TextFile([string]$Path, [string]$Text) {
+    [IO.File]::WriteAllText($Path, $Text, (New-Object Text.UTF8Encoding($false)))
+}
+
 function Move-Folder([string]$From, [string]$To) {
     if (-not (Test-Path $From)) { return }
     if (Test-Path $To) { Write-Warning "Not moved, because the target exists: $From -> $To"; return }
@@ -125,8 +146,28 @@ if (-not $DryRun) {
     }
 }
 
+function Find-RevitVersions {
+    # Revit is not always in %ProgramFiles%; the registry knows where each version is installed.
+    $found = @{}
+    foreach ($v in 2021..2026) {
+        $exe = Join-Path $env:ProgramFiles "Autodesk\Revit $v\Revit.exe"
+        if (Test-Path $exe) { $found["$v"] = $exe; continue }
+        foreach ($key in @("HKLM:\SOFTWARE\Autodesk\Revit\$v", "HKLM:\SOFTWARE\Autodesk\Revit\Autodesk Revit $v")) {
+            $sub = Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).InstallationLocation }
+            $dir = $sub | Where-Object { $_ -and (Test-Path (Join-Path $_ 'Revit.exe')) } | Select-Object -First 1
+            if ($dir) { $found["$v"] = Join-Path $dir 'Revit.exe'; break }
+        }
+    }
+    return $found
+}
+
 if (-not $RevitVersions) {
-    $RevitVersions = 2021..2026 | Where-Object { Test-Path (Join-Path $env:ProgramFiles "Autodesk\Revit $_\Revit.exe") } | ForEach-Object { "$_" }
+    $installed = Find-RevitVersions
+    $RevitVersions = $installed.Keys | Sort-Object
+    foreach ($v in $RevitVersions) { Note "Revit ${v}: $($installed[$v])" }
+    if (-not $RevitVersions -and -not $SkipAddin) {
+        throw 'No Revit 2021-2026 was found on this computer. Install Revit first, or give the versions yourself: -RevitVersions 2025,2026 (or use -SkipAddin).'
+    }
 }
 Write-Host "Revit versions: $($RevitVersions -join ', ')"
 Write-Host "Install folder: $DataDir"
@@ -143,6 +184,18 @@ foreach ($old in $OldDataDirs) {
 }
 Remove-IfEmpty (Join-Path $env:LOCALAPPDATA 'FirstOption\RevitMCP')
 Remove-IfEmpty (Join-Path $env:LOCALAPPDATA 'FirstOption')
+
+# A manifest of an older install can point to an add-in folder that no longer exists. Revit then shows an error at start.
+foreach ($dir in Get-ChildItem (Join-Path $env:APPDATA 'Autodesk\Revit\Addins') -Directory -ErrorAction SilentlyContinue) {
+    $addin = Join-Path $dir.FullName 'FirstOption.RevitMcp.addin'
+    if (-not (Test-Path $addin)) { continue }
+    $assembly = $null
+    try { $assembly = ([xml](Get-Content $addin -Raw)).RevitAddIns.AddIn.Assembly } catch { }
+    if ($assembly -and -not [IO.Path]::IsPathRooted($assembly)) { $assembly = Join-Path $dir.FullName $assembly }
+    if ($assembly -and (Test-Path $assembly)) { continue }
+    Note "delete $addin (it points to a file that is not there: $assembly)"
+    if (-not $DryRun) { Remove-Item $addin -Force }
+}
 
 $settings = Get-Settings
 if ($settings -and $settings.libraryPath -and
@@ -176,11 +229,12 @@ if (-not $SkipAddin) {
         Note "copy $out -> $dest"
         Note "write $addinsDir\FirstOption.RevitMcp.addin (Assembly: $dll)"
         if (-not $DryRun) {
+            if (-not (Test-Path (Join-Path $out 'FirstOption.RevitMcp.Addin.dll'))) { throw "The build made no add-in for Revit ${v}: $out" }
             Remove-Folder $dest
             New-Item -ItemType Directory -Force $dest, $addinsDir | Out-Null
-            Copy-Item (Join-Path $out '*') $dest -Recurse -Force -Exclude '*.addin', '*.pdb'
-            $text = $manifest -replace '<Assembly>[^<]*</Assembly>', "<Assembly>$([Security.SecurityElement]::Escape($dll))</Assembly>"
-            Set-Content (Join-Path $addinsDir 'FirstOption.RevitMcp.addin') $text -Encoding UTF8
+            Copy-Tree $out $dest @('*.addin', '*.pdb')
+            $text = $manifest -replace '<Assembly>[^<]*</Assembly>', ('<Assembly>' + [Security.SecurityElement]::Escape($dll) + '</Assembly>')
+            Write-TextFile (Join-Path $addinsDir 'FirstOption.RevitMcp.addin') $text
         }
         Remove-Folder (Join-Path $addinsDir 'FirstOption.RevitMcp')
     }
@@ -192,7 +246,7 @@ if (-not $SkipPyRevit) {
     Remove-Folder $BridgeDir
     if (-not $DryRun) {
         New-Item -ItemType Directory -Force $BridgeDir | Out-Null
-        Copy-Item (Join-Path $Root 'pyrevit\*') $BridgeDir -Recurse -Force -Exclude '__pycache__'
+        Copy-Tree (Join-Path $Root 'pyrevit') $BridgeDir @('*.pyc')
         Get-ChildItem $BridgeDir -Recurse -Directory -Filter '__pycache__' | Remove-Item -Recurse -Force
     }
     $library = Get-LibraryPath
@@ -259,6 +313,55 @@ if ($codexOld) {
 elseif ($RegisterCodex) {
     Step 'Register in Codex CLI'
     Invoke-Tool 'codex' @('mcp', 'add', $McpName, '--', $ServerExe)
+}
+
+# 6. Check the install
+if (-not $DryRun) {
+    Step 'Check the install'
+    $problems = @()
+    function Check([string]$Text, [bool]$Ok, [string]$Fix) {
+        Write-Host ("  [{0}] {1}" -f $(if ($Ok) { 'ok  ' } else { 'FAIL' }), $Text) -ForegroundColor $(if ($Ok) { 'DarkGray' } else { 'Red' })
+        if (-not $Ok) { $script:problems += "$Text -> $Fix" }
+    }
+
+    if (-not $SkipServer) {
+        Check "MCP server: $ServerExe" (Test-Path $ServerExe) 'Run the script again and read the dotnet publish output.'
+    }
+    if (-not $SkipAddin) {
+        foreach ($v in $RevitVersions) {
+            $dll = Join-Path $AddinRoot "$v\FirstOption.RevitMcp.Addin.dll"
+            $addin = Join-Path $env:APPDATA "Autodesk\Revit\Addins\$v\FirstOption.RevitMcp.addin"
+            Check "Revit ${v} add-in: $dll" (Test-Path $dll) 'The build failed, or a file was locked because Revit was open.'
+            $assembly = $null
+            if (Test-Path $addin) {
+                try { $assembly = ([xml](Get-Content $addin -Raw)).RevitAddIns.AddIn.Assembly } catch { $assembly = $null }
+            }
+            Check "Revit ${v} manifest points to the add-in" ($assembly -and (Test-Path $assembly)) "Delete $addin and run the script again."
+            # Roslyn runs the C# of the agent; without it the add-in loads but revit_execute_csharp fails.
+            Check "Revit ${v} C# runner files" (Test-Path (Join-Path $AddinRoot "$v\Microsoft.CodeAnalysis.CSharp.dll")) 'Run the script again with Revit closed.'
+        }
+    }
+    if (-not $SkipPyRevit) {
+        Check "pyRevit bridge: $BridgeDir" (Test-Path (Join-Path $BridgeDir 'FirstOptionMCP.extension\startup.py')) 'Run the script again.'
+        $library = Get-LibraryPath
+        Check "Command library: $library" (Test-Path (Join-Path $library 'FirstOptionLibrary.extension\FO Library.tab\Commands.panel')) 'Run the script again.'
+        if (Get-Command 'pyrevit' -ErrorAction SilentlyContinue) {
+            $paths = pyrevit extensions paths
+            Check 'pyRevit knows the bridge and the library' (($paths -contains $BridgeDir) -and ($paths -contains $library)) "Run: pyrevit extensions paths add `"$BridgeDir`""
+        }
+    }
+    if (-not $SkipSkills) {
+        foreach ($t in @((Join-Path $HOME '.claude\skills'), (Join-Path $HOME '.codex\skills'))) {
+            if (Test-Path $t) { Check "Skills: $t" (Test-Path (Join-Path $t 'revit-mcp\SKILL.md')) 'Run the script again.' }
+        }
+    }
+
+    if ($problems) {
+        Write-Host ''
+        Write-Warning "The install is not complete ($($problems.Count) problem(s)):"
+        $problems | ForEach-Object { Write-Host "  - $_" -ForegroundColor Red }
+        throw 'Install incomplete. Fix the problems above and run the script again.'
+    }
 }
 
 Step 'Done'
