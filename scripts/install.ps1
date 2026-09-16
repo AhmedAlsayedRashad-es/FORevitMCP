@@ -284,6 +284,15 @@ if (-not $DryRun) {
             Check 'pyRevit does not load the command library (no FO Library tab)' (-not ($paths -contains $library)) "Run: pyrevit extensions paths forget `"$library`""
         }
     }
+    # A registration made by hand outside PowerShell can keep the text "$env:LOCALAPPDATA" in the path. Claude Code starts the
+    # server without a shell, so the server never starts, and the tools show "Connection closed" while Revit shows online.
+    if (Get-Command 'claude' -ErrorAction SilentlyContinue) {
+        $registered = (claude mcp get $McpName 2>$null | Select-String '^\s*Command:\s*(.+)$' | Select-Object -First 1)
+        if ($registered) {
+            $command = $registered.Matches[0].Groups[1].Value.Trim()
+            Check "Claude Code starts the server from a real file: $command" (Test-Path $command) "Run the script again with -RegisterClaude."
+        }
+    }
     if (-not $SkipSkills) {
         foreach ($t in @((Join-Path $HOME '.claude\skills'), (Join-Path $HOME '.codex\skills'))) {
             if (Test-Path $t) { Check "Skills: $t" (Test-Path (Join-Path $t 'revit-mcp\SKILL.md')) 'Run the script again.' }
