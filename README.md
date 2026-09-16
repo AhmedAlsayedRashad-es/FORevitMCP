@@ -19,7 +19,7 @@ flowchart LR
 | Folder | What it is |
 |---|---|
 | `src/Server` | The MCP server (`FirstOption.RevitMcp.exe`), .NET 8, [MCP C# SDK](https://github.com/modelcontextprotocol/csharp-sdk) 2.2.0, stdio |
-| `src/Addin` | The Revit add-in: ribbon tab "First Option", dockable MCP panel, GitHub Settings window, Roslyn C# runner. Revit 2021-2026 |
+| `src/Addin` | The Revit add-in: ribbon tab "First Option", dockable MCP panel, GitHub Settings window, Roslyn C# runner. Revit 2020-2026 (2020: .NET Framework 4.7.2, 2021-2024: .NET Framework 4.8, 2025-2026: .NET 8) |
 | `src/Shared` | Settings, paths and the activity log, shared by the server and the add-in |
 | `pyrevit/FirstOptionMCP.extension` | The bridge: `startup.py` registers the pyRevit Routes API `fo-mcp` |
 | `skills` | Agent skills for Claude Code and Codex (same `SKILL.md` format) |
@@ -44,7 +44,7 @@ The script does these steps (use `-DryRun` to see them first, `-RevitVersions 20
 
 1. Moves the files from the old folders of version 0.1.0 (`%LOCALAPPDATA%\FirstOption\RevitMCP`, `Documents\FirstOption\RevitCommandLibrary`, the add-in folders in `%APPDATA%\Autodesk\Revit\Addins`) and deletes those folders.
 2. Publishes the MCP server to `%LOCALAPPDATA%\First Option\RevitMCP\Server`.
-3. Builds the add-in for each installed Revit, copies it to `%LOCALAPPDATA%\First Option\RevitMCP\Revit Add-in\<version>`, and writes `FirstOption.RevitMcp.addin` in `%APPDATA%\Autodesk\Revit\Addins\<version>`.
+3. Builds the add-in for Revit 2020 to 2026, whether or not that Revit is on the computer, copies it to `%LOCALAPPDATA%\First Option\RevitMCP\Revit Add-in\<version>`, and writes `FirstOption.RevitMcp.addin` in `%APPDATA%\Autodesk\Revit\Addins\<version>`.
 4. Copies the pyRevit bridge to `%LOCALAPPDATA%\First Option\RevitMCP\pyRevit Bridge`, adds the bridge and the command library to the pyRevit extension paths, and turns on pyRevit Routes.
 5. Copies the skills to `~\.claude\skills` and `~\.codex\skills`.
 6. Registers the MCP server in Claude Code and Codex. A registration that already exists gets the new server path.

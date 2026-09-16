@@ -115,7 +115,7 @@ namespace FirstOption.RevitMcp.Addin.Undo
 
     internal static class Ids
     {
-#if REVIT2021 || REVIT2022 || REVIT2023
+#if REVIT2020 || REVIT2021 || REVIT2022 || REVIT2023
         public static long Of(ElementId id) => id.IntegerValue;
         public static ElementId To(long value) => new ElementId((int)value);
 #else
@@ -148,7 +148,9 @@ namespace FirstOption.RevitMcp.Addin.Undo
                 c.DocumentSavingAs += OnDocumentSavingAs;
                 c.DocumentSynchronizingWithCentral += OnSynchronizing;
                 c.DocumentSynchronizedWithCentral += OnSynchronized;
-                c.DocumentReloadedLatest += OnReloadedLatest;
+#if !REVIT2020
+                c.DocumentReloadedLatest += OnReloadedLatest;   // Revit 2021 and later only
+#endif
                 application.Idling += OnIdling;
             }
             catch
@@ -168,7 +170,9 @@ namespace FirstOption.RevitMcp.Addin.Undo
                 c.DocumentSavingAs -= OnDocumentSavingAs;
                 c.DocumentSynchronizingWithCentral -= OnSynchronizing;
                 c.DocumentSynchronizedWithCentral -= OnSynchronized;
+#if !REVIT2020
                 c.DocumentReloadedLatest -= OnReloadedLatest;
+#endif
                 application.Idling -= OnIdling;
             }
             catch
@@ -386,8 +390,10 @@ namespace FirstOption.RevitMcp.Addin.Undo
         private static void OnSynchronized(object sender, DocumentSynchronizedWithCentralEventArgs e) =>
             Lose(e.Document, "Synchronize with Central cleared the Revit undo list");
 
+#if !REVIT2020
         private static void OnReloadedLatest(object sender, DocumentReloadedLatestEventArgs e) =>
             Lose(e.Document, "Reload Latest cleared the Revit undo list");
+#endif
 
         private static void SideEffect(string text)
         {
