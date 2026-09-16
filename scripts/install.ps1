@@ -147,26 +147,44 @@ if (-not $DryRun) {
 }
 
 function Find-RevitVersions {
-    # Revit is not always in %ProgramFiles%; the registry knows where each version is installed.
+    # Revit is not always in %ProgramFiles%, and a new Revit version can come out after this script was written.
+    # Look in the usual folders, in the registry, and in every "Revit <year>" folder of every drive folder Autodesk uses.
     $found = @{}
-    foreach ($v in 2021..2026) {
-        $exe = Join-Path $env:ProgramFiles "Autodesk\Revit $v\Revit.exe"
-        if (Test-Path $exe) { $found["$v"] = $exe; continue }
-        foreach ($key in @("HKLM:\SOFTWARE\Autodesk\Revit\$v", "HKLM:\SOFTWARE\Autodesk\Revit\Autodesk Revit $v")) {
-            $sub = Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).InstallationLocation }
-            $dir = $sub | Where-Object { $_ -and (Test-Path (Join-Path $_ 'Revit.exe')) } | Select-Object -First 1
-            if ($dir) { $found["$v"] = Join-Path $dir 'Revit.exe'; break }
+    function Keep([string]$Version, [string]$Exe) {
+        if ($Version -and (Test-Path $Exe) -and -not $found.ContainsKey($Version)) { $found[$Version] = $Exe }
+    }
+    foreach ($base in @($env:ProgramFiles, ${env:ProgramFiles(x86)}, 'C:\Program Files', 'D:\Program Files') | Where-Object { $_ } | Select-Object -Unique) {
+        foreach ($dir in Get-ChildItem (Join-Path $base 'Autodesk') -Directory -Filter 'Revit *' -ErrorAction SilentlyContinue) {
+            if ($dir.Name -match '^Revit (\d{4})$') { Keep $Matches[1] (Join-Path $dir.FullName 'Revit.exe') }
+        }
+    }
+    foreach ($key in @('HKLM:\SOFTWARE\Autodesk\Revit', 'HKLM:\SOFTWARE\WOW6432Node\Autodesk\Revit')) {
+        foreach ($product in Get-ChildItem $key -Recurse -Depth 1 -ErrorAction SilentlyContinue) {
+            $dir = (Get-ItemProperty $product.PSPath -ErrorAction SilentlyContinue).InstallationLocation
+            if (-not $dir) { continue }
+            $exe = Join-Path $dir 'Revit.exe'
+            if (Test-Path $exe) {
+                $version = if ("$($product.PSPath)$dir" -match '(\d{4})') { $Matches[1] } else { $null }
+                Keep $version $exe
+            }
         }
     }
     return $found
 }
+
+$Tested = 2021..2026
 
 if (-not $RevitVersions) {
     $installed = Find-RevitVersions
     $RevitVersions = $installed.Keys | Sort-Object
     foreach ($v in $RevitVersions) { Note "Revit ${v}: $($installed[$v])" }
     if (-not $RevitVersions -and -not $SkipAddin) {
-        throw 'No Revit 2021-2026 was found on this computer. Install Revit first, or give the versions yourself: -RevitVersions 2025,2026 (or use -SkipAddin).'
+        throw 'No Revit was found on this computer. Install Revit first, or give the versions yourself: -RevitVersions 2025,2026 (or use -SkipAddin).'
+    }
+    $new = $RevitVersions | Where-Object { [int]$_ -notin $Tested }
+    if ($new) {
+        $known = ($RevitVersions | Where-Object { [int]$_ -in $Tested }) -join ','
+        Write-Warning "Revit $($new -join ', '): the add-in was never built for this version. The build can fail; then run again with -RevitVersions $known"
     }
 }
 Write-Host "Revit versions: $($RevitVersions -join ', ')"
@@ -221,22 +239,28 @@ if (-not $SkipAddin) {
     $manifest = Get-Content (Join-Path $Root 'src\Addin\FirstOption.RevitMcp.addin') -Raw
     foreach ($v in $RevitVersions) {
         Step "Revit $v add-in -> $(Join-Path $AddinRoot $v)"
-        Invoke-Tool 'dotnet' @('build', (Join-Path $Root 'src\Addin\FirstOption.RevitMcp.Addin.csproj'), '-c', 'Release', "-p:RevitVersion=$v")
-        $out = Join-Path $Root "src\Addin\bin\Release\R$v"
-        $dest = Join-Path $AddinRoot $v
-        $addinsDir = Join-Path $env:APPDATA "Autodesk\Revit\Addins\$v"
-        $dll = Join-Path $dest 'FirstOption.RevitMcp.Addin.dll'
-        Note "copy $out -> $dest"
-        Note "write $addinsDir\FirstOption.RevitMcp.addin (Assembly: $dll)"
-        if (-not $DryRun) {
-            if (-not (Test-Path (Join-Path $out 'FirstOption.RevitMcp.Addin.dll'))) { throw "The build made no add-in for Revit ${v}: $out" }
-            Remove-Folder $dest
-            New-Item -ItemType Directory -Force $dest, $addinsDir | Out-Null
-            Copy-Tree $out $dest @('*.addin', '*.pdb')
-            $text = $manifest -replace '<Assembly>[^<]*</Assembly>', ('<Assembly>' + [Security.SecurityElement]::Escape($dll) + '</Assembly>')
-            Write-TextFile (Join-Path $addinsDir 'FirstOption.RevitMcp.addin') $text
+        # One version that does not build must not stop the other versions; the check at the end lists what is missing.
+        try {
+            Invoke-Tool 'dotnet' @('build', (Join-Path $Root 'src\Addin\FirstOption.RevitMcp.Addin.csproj'), '-c', 'Release', "-p:RevitVersion=$v")
+            $out = Join-Path $Root "src\Addin\bin\Release\R$v"
+            $dest = Join-Path $AddinRoot $v
+            $addinsDir = Join-Path $env:APPDATA "Autodesk\Revit\Addins\$v"
+            $dll = Join-Path $dest 'FirstOption.RevitMcp.Addin.dll'
+            Note "copy $out -> $dest"
+            Note "write $addinsDir\FirstOption.RevitMcp.addin (Assembly: $dll)"
+            if (-not $DryRun) {
+                if (-not (Test-Path (Join-Path $out 'FirstOption.RevitMcp.Addin.dll'))) { throw "The build made no file in $out" }
+                Remove-Folder $dest
+                New-Item -ItemType Directory -Force $dest, $addinsDir | Out-Null
+                Copy-Tree $out $dest @('*.addin', '*.pdb')
+                $text = $manifest -replace '<Assembly>[^<]*</Assembly>', ('<Assembly>' + [Security.SecurityElement]::Escape($dll) + '</Assembly>')
+                Write-TextFile (Join-Path $addinsDir 'FirstOption.RevitMcp.addin') $text
+            }
+            Remove-Folder (Join-Path $addinsDir 'FirstOption.RevitMcp')
         }
-        Remove-Folder (Join-Path $addinsDir 'FirstOption.RevitMcp')
+        catch {
+            Write-Warning "Revit ${v}: the add-in was not installed. $($_.Exception.Message)"
+        }
     }
 }
 
