@@ -28,15 +28,34 @@ flowchart LR
 | `mockups` | The Codex CLI prompt and script for the UI mockups |
 | `tests` | Mock Routes server, MCP smoke test, C# runner test |
 
+## Easy install (setup file)
+
+Run `FirstOption-RevitMCP-Setup-<version>.exe`. The setup needs no admin rights, no .NET SDK and no build. It:
+
+1. Closes Revit when it is open. Revit asks you to save first.
+2. Installs the MCP server, the add-in for Revit 2020-2026, the pyRevit bridge, and the skills for Claude Code and Codex.
+3. Installs pyRevit with winget when pyRevit is missing, adds the bridge to pyRevit, and turns on pyRevit Routes.
+4. Connects Claude Code and Codex when they are installed. Open a new session to use the Revit tools.
+
+Windows > Settings > Apps > FirstOption Revit MCP removes it. The uninstaller keeps the command library, the settings and the activity log.
+
+Build the setup file in **cmd** (needs the .NET 8 SDK and Inno Setup 6, `winget install --id JRSoftware.InnoSetup -e`):
+
+```bat
+powershell -ExecutionPolicy Bypass -File scripts\build-installer.ps1
+```
+
+The file goes to `installer\Output`. The sections below are the install from source, for developers.
+
 ## 1. Install the applications
 
 See [docs/REQUIRED-APPS.md](docs/REQUIRED-APPS.md): Revit, pyRevit (+ CLI), .NET 8 SDK, Git, Node.js, Claude Code, Codex CLI, GitHub CLI (optional).
 
 ## 2. Build and install
 
-Close Revit and every Claude Code and Codex session (the script stops when they run). Then, in PowerShell, in this folder:
+Close Revit and every Claude Code and Codex session (the script stops when they run). Then, in **cmd**, in this folder:
 
-```powershell
+```bat
 powershell -ExecutionPolicy Bypass -File scripts\install.ps1 -RegisterClaude -RegisterCodex
 ```
 
@@ -63,8 +82,10 @@ claude mcp add --scope user firstoption-revit -- "%LOCALAPPDATA%\First Option\Re
 
 ### Codex CLI
 
-```powershell
-codex mcp add firstoption-revit -- "$env:LOCALAPPDATA\First Option\RevitMCP\Server\FirstOption.RevitMcp.exe"
+Paste this in **cmd**:
+
+```bat
+codex mcp add firstoption-revit -- "%LOCALAPPDATA%\First Option\RevitMCP\Server\FirstOption.RevitMcp.exe"
 codex mcp list
 ```
 
@@ -79,14 +100,18 @@ tool_timeout_sec = 300
 
 ### Check
 
-```powershell
-& "$env:LOCALAPPDATA\First Option\RevitMCP\Server\FirstOption.RevitMcp.exe" doctor
+Paste this in **cmd**:
+
+```bat
+"%LOCALAPPDATA%\First Option\RevitMCP\Server\FirstOption.RevitMcp.exe" doctor
 ```
 
 ## 4. pyRevit setup (the script does this when the `pyrevit` CLI is on PATH)
 
-```powershell
-pyrevit extensions paths add "$env:LOCALAPPDATA\First Option\RevitMCP\pyRevit Bridge"
+Paste this in **cmd**:
+
+```bat
+pyrevit extensions paths add "%LOCALAPPDATA%\First Option\RevitMCP\pyRevit Bridge"
 pyrevit configs routes enable
 ```
 
@@ -233,15 +258,17 @@ Advanced settings in `settings.json`: `routesHost` (default `127.0.0.1`), `portS
 
 ## Development
 
-```powershell
+Run these in **cmd**. The add-in targets net8.0-windows for Revit 2025-2026 and net48 for Revit 2021-2024. `smoke_mcp.py` tests the MCP end to end against a mock Routes server. `RunnerCompileTest` tests the Roslyn runner outside Revit.
+
+```bat
 dotnet build src\Server -c Release
-dotnet build src\Addin -c Release -p:RevitVersion=2026   # 2025-2026: net8.0-windows, 2021-2024: net48
-python tests\smoke_mcp.py                                # MCP end to end, against a mock Routes server
-dotnet run --project tests\RunnerCompileTest -c Release  # Roslyn runner, outside Revit
+dotnet build src\Addin -c Release -p:RevitVersion=2026
+python tests\smoke_mcp.py
+dotnet run --project tests\RunnerCompileTest -c Release
 ```
 
-Regenerate the UI mockups with Codex CLI:
+Regenerate the UI mockups with Codex CLI (in **cmd**):
 
-```powershell
+```bat
 powershell -ExecutionPolicy Bypass -File mockups\generate-mockups.ps1
 ```
