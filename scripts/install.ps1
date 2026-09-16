@@ -274,17 +274,17 @@ if (-not $SkipPyRevit) {
 
     Step 'pyRevit extension paths and Routes'
     if (Get-Command 'pyrevit' -ErrorAction SilentlyContinue) {
-        foreach ($old in @($OldBridge, $OldLibrary)) {
+        # pyRevit loads only the bridge. The command library is not a pyRevit extension path, so Revit shows no
+        # "FO Library" tab; the agents run saved commands through the MCP (library_run).
+        foreach ($old in @($OldBridge, $OldLibrary, $library)) {
             if ((pyrevit extensions paths) -contains $old) { Invoke-Tool 'pyrevit' @('extensions', 'paths', 'forget', $old) -AllowFail }
         }
         Invoke-Tool 'pyrevit' @('extensions', 'paths', 'add', $BridgeDir)
-        Invoke-Tool 'pyrevit' @('extensions', 'paths', 'add', $library)
         Invoke-Tool 'pyrevit' @('configs', 'routes', 'enable')
     }
     else {
         Write-Warning 'pyrevit CLI not found. Install pyRevit (docs\REQUIRED-APPS.md), then run:'
         Write-Host "  pyrevit extensions paths add `"$BridgeDir`""
-        Write-Host "  pyrevit extensions paths add `"$library`""
         Write-Host '  pyrevit configs routes enable'
     }
 }
@@ -370,7 +370,8 @@ if (-not $DryRun) {
         Check "Command library: $library" (Test-Path (Join-Path $library 'FirstOptionLibrary.extension\FO Library.tab\Commands.panel')) 'Run the script again.'
         if (Get-Command 'pyrevit' -ErrorAction SilentlyContinue) {
             $paths = pyrevit extensions paths
-            Check 'pyRevit knows the bridge and the library' (($paths -contains $BridgeDir) -and ($paths -contains $library)) "Run: pyrevit extensions paths add `"$BridgeDir`""
+            Check 'pyRevit loads the bridge' ($paths -contains $BridgeDir) "Run: pyrevit extensions paths add `"$BridgeDir`""
+            Check 'pyRevit does not load the command library (no FO Library tab)' (-not ($paths -contains $library)) "Run: pyrevit extensions paths forget `"$library`""
         }
     }
     if (-not $SkipSkills) {

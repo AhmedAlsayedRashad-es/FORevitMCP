@@ -88,9 +88,10 @@ tool_timeout_sec = 300
 
 ```powershell
 pyrevit extensions paths add "$env:LOCALAPPDATA\First Option\RevitMCP\pyRevit Bridge"
-pyrevit extensions paths add "$env:LOCALAPPDATA\First Option\RevitMCP\Command Library"
 pyrevit configs routes enable
 ```
+
+Do not add the command library to the pyRevit extension paths. The agents run saved commands through the MCP, so Revit needs no ribbon tab for them.
 
 Then start Revit, or click pyRevit > Reload. Windows Firewall can ask about Revit the first time Routes starts; allow it.
 
@@ -135,7 +136,7 @@ Copy-Item skills\* "$HOME\.codex\skills" -Recurse -Force
 | `revit_reset` | Closes the model without saving and opens the last saved file (asks for `confirm=true`) |
 | `library_search` | Searches saved commands |
 | `library_get` | Reads a command's metadata and code |
-| `library_save` | Saves working code as a command (pyRevit button + metadata); auto-pushes when that is on |
+| `library_save` | Saves working code as a command (code + metadata); auto-pushes when that is on |
 | `library_run` | Runs a saved IronPython or C# command with `args_json` |
 | `library_info` | Library folder, command count, how to show the buttons |
 | `github_status` | GitHub settings and local git state |
@@ -159,11 +160,11 @@ pyRevit can run IronPython, CPython 3, C# and VB.NET scripts. Through this MCP:
 |---|---|---|
 | IronPython | `revit_execute_python` (the engine that loads `startup.py`) | `script.py` + `body.py` |
 | C# | `revit_execute_csharp` (needs the add-in) | `script.cs` (pyRevit `IExternalCommand` wrapper) + `body.cs` |
-| CPython 3 | No | `script.py` with `#! python3` + `body.py` |
+| CPython 3 | No | `script.py` with `#! python3` + `body.py` (nothing runs it: Revit has no library tab) |
 
 ## The command library
 
-Default folder: `%LOCALAPPDATA%\First Option\RevitMCP\Command Library` (change it in GitHub Settings).
+Default folder: `%LOCALAPPDATA%\First Option\RevitMCP\Command Library` (change it in GitHub Settings). Revit shows no ribbon tab for the library; the agents run a command with `library_run`. The folder keeps the pyRevit folder names, so you can still add it to pyRevit yourself if you want buttons.
 
 ```
 Command Library/
@@ -175,8 +176,8 @@ Command Library/
         create_wall_grid.pushbutton/
           command.json               description, inputs, tags, runs, tested Revit versions
           body.py                    the code as it ran through the MCP
-          script.py                  pyRevit button wrapper (transaction + same names as the MCP)
-          bundle.yaml                button title and tooltip
+          script.py                  wrapper script (transaction + same names as the MCP)
+          bundle.yaml                title and tooltip
 ```
 
 ## The Revit panel
@@ -222,7 +223,7 @@ Advanced settings in `settings.json`: `routesHost` (default `127.0.0.1`), `portS
 | Tool times out | A dialog is open in Revit, or Revit is busy. Close the dialog. |
 | Routes on a different host | Set `routesHost` in `settings.json` to the host in pyRevit Settings > Routes. |
 | `git push failed` | Check the token and the repository in GitHub Settings; use Test connection. |
-| Library buttons do not show | `pyrevit extensions paths add "<library folder>"`, then Reload. The tab is "FO Library". |
+| An "FO Library" tab still shows in Revit | Run `install.ps1` again, or `pyrevit extensions paths forget "<library folder>"`, then pyRevit > Reload. |
 
 ## Development
 
