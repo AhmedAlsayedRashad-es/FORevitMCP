@@ -1,6 +1,6 @@
 # Required applications
 
-Install these on the Windows computer that runs Revit. Run the commands in PowerShell.
+Install these on the Windows computer that runs Revit. Run the commands in cmd.
 
 | # | Application | Why | Install |
 |---|---|---|---|
@@ -19,9 +19,9 @@ Install these on the Windows computer that runs Revit. Run the commands in Power
 
 ## Check the installation
 
-Open a new PowerShell window (so that PATH is fresh), then run:
+Open a new cmd window (so that PATH is fresh), then run:
 
-```powershell
+```bat
 dotnet --list-sdks
 git --version
 pyrevit --version
@@ -32,7 +32,7 @@ codex --version
 ## pyRevit settings that this project needs
 
 1. Turn on the Routes server:
-   ```powershell
+   ```bat
    pyrevit configs routes enable
    ```
    Or in Revit: pyRevit tab > Settings > Routes > turn on the server, then Save & Reload.
