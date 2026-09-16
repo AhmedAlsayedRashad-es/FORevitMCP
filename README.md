@@ -28,6 +28,25 @@ flowchart LR
 | `mockups` | The Codex CLI prompt and script for the UI mockups |
 | `tests` | Mock Routes server, MCP smoke test, C# runner test |
 
+## Easy install (setup file)
+
+Run `FirstOption-RevitMCP-Setup-<version>.exe`. The setup needs no admin rights, no .NET SDK and no build. It:
+
+1. Closes Revit when it is open. Revit asks you to save first.
+2. Installs the MCP server, the add-in for Revit 2020-2026, the pyRevit bridge, and the skills for Claude Code and Codex.
+3. Installs pyRevit with winget when pyRevit is missing, adds the bridge to pyRevit, and turns on pyRevit Routes.
+4. Connects Claude Code and Codex when they are installed. Open a new session to use the Revit tools.
+
+Windows > Settings > Apps > FirstOption Revit MCP removes it. The uninstaller keeps the command library, the settings and the activity log.
+
+Build the setup file in **cmd** (needs the .NET 8 SDK and Inno Setup 6, `winget install --id JRSoftware.InnoSetup -e`):
+
+```bat
+powershell -ExecutionPolicy Bypass -File scripts\build-installer.ps1
+```
+
+The file goes to `installer\Output`. The sections below are the install from source, for developers.
+
 ## 1. Install the applications
 
 See [docs/REQUIRED-APPS.md](docs/REQUIRED-APPS.md): Revit, pyRevit (+ CLI), .NET 8 SDK, Git, Node.js, Claude Code, Codex CLI, GitHub CLI (optional).

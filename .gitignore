@@ -3,3 +3,5 @@ obj/
 .vs/
 *.user
 __pycache__/
+installer/stage/
+installer/Output/
