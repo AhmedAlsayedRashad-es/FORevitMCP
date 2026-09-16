@@ -104,11 +104,18 @@ Then start Revit, or click pyRevit > Reload. Windows Firewall can ask about Revi
 | `revit-families-and-3d` | DirectShape, family documents, load and place instances. |
 | `revit-github-sync` | Push the library to GitHub. |
 
-Copy them by hand:
+Open **cmd** in this folder, then paste one of these commands.
 
-```powershell
-Copy-Item skills\* "$HOME\.claude\skills" -Recurse -Force
-Copy-Item skills\* "$HOME\.codex\skills" -Recurse -Force
+Claude Code:
+
+```bat
+xcopy skills "%USERPROFILE%\.claude\skills\" /E /I /Y
+```
+
+Codex:
+
+```bat
+xcopy skills "%USERPROFILE%\.codex\skills\" /E /I /Y
 ```
 
 ## 6. Use it
