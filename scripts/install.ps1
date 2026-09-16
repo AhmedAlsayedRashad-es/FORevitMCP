@@ -172,22 +172,16 @@ function Find-RevitVersions {
     return $found
 }
 
-$Tested = 2021..2026
+# The add-in is built for every Revit version the project supports, whether or not that Revit is on this computer.
+# Revit reads only the manifest of the versions it has, so the extra files do nothing.
+$AllVersions = 2021..2027 | ForEach-Object { "$_" }
 
-if (-not $RevitVersions) {
-    $installed = Find-RevitVersions
-    $RevitVersions = $installed.Keys | Sort-Object
-    foreach ($v in $RevitVersions) { Note "Revit ${v}: $($installed[$v])" }
-    if (-not $RevitVersions -and -not $SkipAddin) {
-        throw 'No Revit was found on this computer. Install Revit first, or give the versions yourself: -RevitVersions 2025,2026 (or use -SkipAddin).'
-    }
-    $new = $RevitVersions | Where-Object { [int]$_ -notin $Tested }
-    if ($new) {
-        $known = ($RevitVersions | Where-Object { [int]$_ -in $Tested }) -join ','
-        Write-Warning "Revit $($new -join ', '): the add-in was never built for this version. The build can fail; then run again with -RevitVersions $known"
-    }
-}
-Write-Host "Revit versions: $($RevitVersions -join ', ')"
+$installed = Find-RevitVersions
+foreach ($v in ($installed.Keys | Sort-Object)) { Note "Revit ${v} is on this computer: $($installed[$v])" }
+if (-not $RevitVersions) { $RevitVersions = $AllVersions }
+$extra = $installed.Keys | Where-Object { $_ -notin $RevitVersions }
+if ($extra) { Write-Warning "Revit $($extra -join ', ') is installed, but the add-in has no build for it." }
+Write-Host "Revit versions to build: $($RevitVersions -join ', ')"
 Write-Host "Install folder: $DataDir"
 
 # 0. Move files from the old folders
@@ -355,6 +349,11 @@ if (-not $DryRun) {
         foreach ($v in $RevitVersions) {
             $dll = Join-Path $AddinRoot "$v\FirstOption.RevitMcp.Addin.dll"
             $addin = Join-Path $env:APPDATA "Autodesk\Revit\Addins\$v\FirstOption.RevitMcp.addin"
+            if (-not (Test-Path $dll) -and -not $installed.ContainsKey($v)) {
+                # Revit $v is not on this computer, so a missing build stops nobody here.
+                Write-Host "  [skip] Revit ${v}: not installed here and not built" -ForegroundColor DarkGray
+                continue
+            }
             Check "Revit ${v} add-in: $dll" (Test-Path $dll) 'The build failed, or a file was locked because Revit was open.'
             $assembly = $null
             if (Test-Path $addin) {
