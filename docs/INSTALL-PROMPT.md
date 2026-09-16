@@ -11,6 +11,49 @@ Repository: https://github.com/AhmedAlsayedRashad-es/FORevitMCP
 
 Do these steps in order. Stop and tell me when a step fails. Do not skip a step.
 
+0. Check what is already installed. Compare this computer with the expected structure below. Use "dir" and "claude mcp get firstoption-revit" (or "codex mcp list"). Only read; do not change files in this step.
+
+   EXPECTED STRUCTURE
+
+   %LOCALAPPDATA%\First Option\RevitMCP\
+   ├─ Server\
+   │  ├─ FirstOption.RevitMcp.exe                  (required)
+   │  ├─ FirstOption.RevitMcp.dll                  (required)
+   │  ├─ FirstOption.RevitMcp.deps.json            (required)
+   │  └─ FirstOption.RevitMcp.runtimeconfig.json   (required)
+   ├─ Revit Add-in\
+   │  └─ <version>\  one folder for each Revit version on this computer (2020-2026)
+   │     ├─ FirstOption.RevitMcp.Addin.dll         (required)
+   │     ├─ Microsoft.CodeAnalysis.dll             (required, C# runner)
+   │     └─ Microsoft.CodeAnalysis.CSharp.dll      (required, C# runner)
+   ├─ pyRevit Bridge\
+   │  └─ FirstOptionMCP.extension\
+   │     └─ startup.py                             (required)
+   ├─ Command Library\                             (created by the MCP server; can be missing on a new install)
+   ├─ Activity Log\activity.jsonl                  (created on the first run; can be missing)
+   └─ Settings\settings.json                       (created by GitHub Settings; can be missing)
+
+   %APPDATA%\Autodesk\Revit\Addins\<version>\FirstOption.RevitMcp.addin   (required, one for each Revit version)
+
+   %USERPROFILE%\.claude\skills\   (Claude Code)   and/or   %USERPROFILE%\.codex\skills\   (Codex)
+   ├─ revit-mcp\SKILL.md                           (required)
+   ├─ pyrevit-engines\SKILL.md                     (required)
+   ├─ revit-command-library\SKILL.md               (required)
+   ├─ revit-families-and-3d\SKILL.md               (required)
+   └─ revit-github-sync\SKILL.md                   (required)
+
+   MCP registration: "firstoption-revit" points to
+   %LOCALAPPDATA%\First Option\RevitMCP\Server\FirstOption.RevitMcp.exe     (required)
+
+   pyRevit: "pyrevit extensions paths" lists %LOCALAPPDATA%\First Option\RevitMCP\pyRevit Bridge, and "pyrevit configs routes" says "Enabled".   (required)
+
+   Give me a table: each required item, found or missing. Then decide:
+   - Every required item is found: skip steps 2 to 4 and go to step 5.
+   - Only skills are missing: do step 2 to get the repository, then in the repository folder run the xcopy command from README.md section 5, then go to step 5.
+   - Only the MCP registration is missing: run the "claude mcp add" or "codex mcp add" command from README.md section 3, then go to step 5.
+   - Only the pyRevit items are missing: go to step 6.
+   - Anything else is missing: do every step from step 1.
+
 1. Check the applications. Run: dotnet --list-sdks, git --version, pyrevit --version, claude --version, codex --version.
    - A .NET 8 SDK, Git and the pyRevit CLI are required. Revit 2020-2026 and pyRevit 5.x or later must be installed.
    - When one is missing, give me the winget command from docs/REQUIRED-APPS.md and wait until I install it.
