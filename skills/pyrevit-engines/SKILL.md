@@ -10,7 +10,7 @@ description: Choose the script language for Revit work. pyRevit runs IronPython,
 | Engine | How pyRevit knows | Live through the FirstOption MCP |
 |---|---|---|
 | IronPython (2.7 default; 3.4 optional) | `script.py` | Yes: `revit_execute_python` |
-| CPython 3 (pythonnet) | `script.py` with `#! python3` on line 1 | No. Button only (`library_save language=cpython`) |
+| CPython 3 (pythonnet) | `script.py` with `#! python3` on line 1 | No. The library has no Revit tab, so do not save CPython commands |
 | C# | `script.cs` with a class that implements `IExternalCommand` | Yes: `revit_execute_csharp` (Roslyn in the FirstOption add-in) |
 | VB.NET | `script.vb` | No |
 

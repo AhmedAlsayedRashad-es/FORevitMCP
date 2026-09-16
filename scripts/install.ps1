@@ -15,14 +15,12 @@
       ~\.claude\skills and ~\.codex\skills
 
     Steps:
-    0. Moves files from the old folders (%LOCALAPPDATA%\FirstOption\RevitMCP, Documents\FirstOption\RevitCommandLibrary,
-       the add-in folders in %APPDATA%\Autodesk\Revit\Addins) and deletes the old folders
     1. Publishes the MCP server
     2. Builds the Revit add-in for each Revit version and writes the .addin manifest
-    3. Copies the pyRevit bridge, sets the pyRevit extension paths, and turns on Routes
+    3. Copies the pyRevit bridge, sets the pyRevit extension path, and turns on Routes
     4. Copies the skills to ~/.claude/skills and ~/.codex/skills
-    5. Registers the MCP server in Claude Code (-RegisterClaude) and Codex CLI (-RegisterCodex);
-       registrations that already exist are always changed to the new server path
+    5. Registers the MCP server in Claude Code (-RegisterClaude) and Codex CLI (-RegisterCodex)
+    6. Checks that every file is installed
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File scripts\install.ps1 -RegisterClaude -RegisterCodex
@@ -50,17 +48,8 @@ $ServerExe = Join-Path $ServerDir 'FirstOption.RevitMcp.exe'
 $AddinRoot = Join-Path $DataDir 'Revit Add-in'
 $BridgeDir = Join-Path $DataDir 'pyRevit Bridge'
 $DefaultLibrary = Join-Path $DataDir 'Command Library'
-$ActivityDir = Join-Path $DataDir 'Activity Log'
-$SettingsDir = Join-Path $DataDir 'Settings'
-$SettingsFile = Join-Path $SettingsDir 'settings.json'
+$SettingsFile = Join-Path $DataDir 'Settings\settings.json'
 $McpName = 'firstoption-revit'
-
-# old locations (before version 0.2.0)
-$OldDataDirs = @((Join-Path $env:LOCALAPPDATA 'FirstOption\RevitMCP'), $DataDir)
-$OldLibrary = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'FirstOption\RevitCommandLibrary'
-$OldBridge = Join-Path $Root 'pyrevit'
-$OldServerExes = @((Join-Path $env:LOCALAPPDATA 'FirstOption\RevitMCP\server\FirstOption.RevitMcp.exe'),
-                   (Join-Path $env:LOCALAPPDATA 'First Option\RevitMCP\server\FirstOption.RevitMcp.exe'))
 
 function Step([string]$Text) { Write-Host "`n==> $Text" -ForegroundColor Cyan }
 function Note([string]$Text) { Write-Host "  $Text" -ForegroundColor DarkGray }
@@ -93,35 +82,10 @@ function Write-TextFile([string]$Path, [string]$Text) {
     [IO.File]::WriteAllText($Path, $Text, (New-Object Text.UTF8Encoding($false)))
 }
 
-function Move-Folder([string]$From, [string]$To) {
-    if (-not (Test-Path $From)) { return }
-    if (Test-Path $To) { Write-Warning "Not moved, because the target exists: $From -> $To"; return }
-    Note "move $From -> $To"
-    if (-not $DryRun) {
-        New-Item -ItemType Directory -Force (Split-Path $To) | Out-Null
-        Move-Item $From $To
-    }
-}
-
-function Move-File([string]$From, [string]$ToDir) {
-    if (-not (Test-Path $From -PathType Leaf)) { return }
-    $to = Join-Path $ToDir (Split-Path $From -Leaf)
-    if (Test-Path $to) { Write-Warning "Not moved, because the target exists: $From -> $to"; return }
-    Note "move $From -> $to"
-    if (-not $DryRun) {
-        New-Item -ItemType Directory -Force $ToDir | Out-Null
-        Move-Item $From $to
-    }
-}
-
 function Remove-Folder([string]$Path) {
     if (-not (Test-Path $Path)) { return }
     Note "delete $Path"
     if (-not $DryRun) { Remove-Item $Path -Recurse -Force }
-}
-
-function Remove-IfEmpty([string]$Path) {
-    if ((Test-Path $Path) -and -not (Get-ChildItem $Path -Force)) { Remove-Folder $Path }
 }
 
 function Get-Settings {
@@ -184,43 +148,6 @@ if ($extra) { Write-Warning "Revit $($extra -join ', ') is installed, but the ad
 Write-Host "Revit versions to build: $($RevitVersions -join ', ')"
 Write-Host "Install folder: $DataDir"
 
-# 0. Move files from the old folders
-Step 'Move files from the old folders'
-foreach ($old in $OldDataDirs) {
-    Move-File (Join-Path $old 'settings.json') $SettingsDir
-    Move-File (Join-Path $old 'activity.jsonl') $ActivityDir
-    Move-File (Join-Path $old 'activity.jsonl.old') $ActivityDir
-    # the old server folder is 'server'; the new server is published again in step 1
-    $oldServer = Get-ChildItem $old -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -ceq 'server' }
-    if ($oldServer) { Remove-Folder $oldServer.FullName }
-}
-Remove-IfEmpty (Join-Path $env:LOCALAPPDATA 'FirstOption\RevitMCP')
-Remove-IfEmpty (Join-Path $env:LOCALAPPDATA 'FirstOption')
-
-# A manifest of an older install can point to an add-in folder that no longer exists. Revit then shows an error at start.
-foreach ($dir in Get-ChildItem (Join-Path $env:APPDATA 'Autodesk\Revit\Addins') -Directory -ErrorAction SilentlyContinue) {
-    $addin = Join-Path $dir.FullName 'FirstOption.RevitMcp.addin'
-    if (-not (Test-Path $addin)) { continue }
-    $assembly = $null
-    try { $assembly = ([xml](Get-Content $addin -Raw)).RevitAddIns.AddIn.Assembly } catch { }
-    if ($assembly -and -not [IO.Path]::IsPathRooted($assembly)) { $assembly = Join-Path $dir.FullName $assembly }
-    if ($assembly -and (Test-Path $assembly)) { continue }
-    Note "delete $addin (it points to a file that is not there: $assembly)"
-    if (-not $DryRun) { Remove-Item $addin -Force }
-}
-
-$settings = Get-Settings
-if ($settings -and $settings.libraryPath -and
-    [string]::Equals([Environment]::ExpandEnvironmentVariables($settings.libraryPath).TrimEnd('\'), $OldLibrary, 'OrdinalIgnoreCase')) {
-    Note "settings.json: libraryPath was the old default; now the default is used"
-    if (-not $DryRun) {
-        $settings.libraryPath = ''
-        $settings | ConvertTo-Json -Depth 5 | Set-Content $SettingsFile -Encoding UTF8
-    }
-}
-if ((Get-LibraryPath) -eq $DefaultLibrary) { Move-Folder $OldLibrary $DefaultLibrary }
-Remove-IfEmpty (Split-Path $OldLibrary)
-
 # 1. MCP server
 if (-not $SkipServer) {
     Step "MCP server -> $ServerDir"
@@ -250,7 +177,6 @@ if (-not $SkipAddin) {
                 $text = $manifest -replace '<Assembly>[^<]*</Assembly>', ('<Assembly>' + [Security.SecurityElement]::Escape($dll) + '</Assembly>')
                 Write-TextFile (Join-Path $addinsDir 'FirstOption.RevitMcp.addin') $text
             }
-            Remove-Folder (Join-Path $addinsDir 'FirstOption.RevitMcp')
         }
         catch {
             Write-Warning "Revit ${v}: the add-in was not installed. $($_.Exception.Message)"
@@ -274,17 +200,14 @@ if (-not $SkipPyRevit) {
 
     Step 'pyRevit extension paths and Routes'
     if (Get-Command 'pyrevit' -ErrorAction SilentlyContinue) {
-        foreach ($old in @($OldBridge, $OldLibrary)) {
-            if ((pyrevit extensions paths) -contains $old) { Invoke-Tool 'pyrevit' @('extensions', 'paths', 'forget', $old) -AllowFail }
-        }
+        # pyRevit loads only the bridge. The command library is not a pyRevit extension path, so Revit shows no
+        # "FO Library" tab; the agents run saved commands through the MCP (library_run).
         Invoke-Tool 'pyrevit' @('extensions', 'paths', 'add', $BridgeDir)
-        Invoke-Tool 'pyrevit' @('extensions', 'paths', 'add', $library)
         Invoke-Tool 'pyrevit' @('configs', 'routes', 'enable')
     }
     else {
         Write-Warning 'pyrevit CLI not found. Install pyRevit (docs\REQUIRED-APPS.md), then run:'
         Write-Host "  pyrevit extensions paths add `"$BridgeDir`""
-        Write-Host "  pyrevit extensions paths add `"$library`""
         Write-Host '  pyrevit configs routes enable'
     }
 }
@@ -309,26 +232,13 @@ if (-not $SkipSkills) {
 }
 
 # 5. Register the MCP server
-$claudeJson = Join-Path $HOME '.claude.json'
-$claudeOld = (Test-Path $claudeJson) -and ($OldServerExes | Where-Object { (Get-Content $claudeJson -Raw).Replace('\\', '\').Contains($_) })
-if ($RegisterClaude -or $claudeOld) {
+if ($RegisterClaude) {
     Step 'Register in Claude Code (user scope)'
+    # remove first, so that running the script again does not fail on an existing registration
     Invoke-Tool 'claude' @('mcp', 'remove', '--scope', 'user', $McpName) -AllowFail
     Invoke-Tool 'claude' @('mcp', 'add', '--scope', 'user', $McpName, '--', $ServerExe)
 }
-
-$codexToml = Join-Path $HOME '.codex\config.toml'
-$codexText = if (Test-Path $codexToml) { Get-Content $codexToml -Raw } else { '' }
-$codexOld = $OldServerExes | Where-Object { $codexText.Contains($_) }
-if ($codexOld) {
-    Step 'Change the server path in Codex CLI'
-    Note "$codexToml -> $ServerExe"
-    if (-not $DryRun) {
-        foreach ($old in $codexOld) { $codexText = $codexText.Replace($old, $ServerExe) }
-        [IO.File]::WriteAllText($codexToml, $codexText)
-    }
-}
-elseif ($RegisterCodex) {
+if ($RegisterCodex) {
     Step 'Register in Codex CLI'
     Invoke-Tool 'codex' @('mcp', 'add', $McpName, '--', $ServerExe)
 }
@@ -370,7 +280,8 @@ if (-not $DryRun) {
         Check "Command library: $library" (Test-Path (Join-Path $library 'FirstOptionLibrary.extension\FO Library.tab\Commands.panel')) 'Run the script again.'
         if (Get-Command 'pyrevit' -ErrorAction SilentlyContinue) {
             $paths = pyrevit extensions paths
-            Check 'pyRevit knows the bridge and the library' (($paths -contains $BridgeDir) -and ($paths -contains $library)) "Run: pyrevit extensions paths add `"$BridgeDir`""
+            Check 'pyRevit loads the bridge' ($paths -contains $BridgeDir) "Run: pyrevit extensions paths add `"$BridgeDir`""
+            Check 'pyRevit does not load the command library (no FO Library tab)' (-not ($paths -contains $library)) "Run: pyrevit extensions paths forget `"$library`""
         }
     }
     if (-not $SkipSkills) {

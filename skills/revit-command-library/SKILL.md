@@ -5,7 +5,7 @@ description: Reuse and grow the FirstOption Revit command library. Use before yo
 
 # Revit command library
 
-The library is a folder that is also a pyRevit extension (tab "FO Library") and a git repository. Each command has `command.json` (metadata), `body.py` or `body.cs` (your code) and a pyRevit button wrapper.
+The library is a folder and a git repository. Each command has `command.json` (metadata), `body.py` or `body.cs` (your code) and a wrapper script. Revit has no ribbon tab for it; run a command with `library_run`.
 
 ## Before you write code
 
@@ -22,7 +22,7 @@ Save it when it can help again. Do not save one-off questions, failed code, or c
 
 - `name`: snake_case, verb first: `create_wall_grid`, `rename_views_by_level`, `place_door_family`.
 - `description`: what it does and what it needs (open project, active floor plan, selection, family document).
-- `language`: `ironpython`, `csharp` or `cpython`.
+- `language`: `ironpython` or `csharp`. Do not save `cpython`: nothing can run it.
 - `code`: the exact code that ran.
 - `inputs`: every `args` key with type, unit and default: `spacing_mm (float, 6000), count_x (int, 5), level (str, lowest level)`.
 - `tags`: 2-5 lower-case words.
@@ -32,7 +32,7 @@ Save it when it can help again. Do not save one-off questions, failed code, or c
 ## Write code that can be saved
 
 - Read inputs from `args` with defaults: `spacing = float(args.get("spacing_mm", 6000)) / 304.8` (Python) or `args.TryGetValue("spacing_mm", out var s)` (C#).
-- A pyRevit button runs with empty `args`, so the defaults must work.
+- An agent can run it later with empty `args`, so the defaults must work.
 - Find elements by name, category or selection, never by a fixed ElementId.
 - Print a short summary and set `result` (Python) or `return` a value (C#).
 

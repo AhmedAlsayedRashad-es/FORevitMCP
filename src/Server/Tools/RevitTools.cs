@@ -43,7 +43,7 @@ public sealed class RevitTools(RoutesClient routes)
             {
                 ironpython = "Live: revit_execute_python. Engine: " + (inst.Python ?? "unknown") + ". Check the version before you use Python 3 syntax.",
                 csharp = inst.CSharpRunner ? "Live: revit_execute_csharp (Roslyn inside the FirstOption add-in)." : "Not live here: the FirstOption Revit add-in is not loaded. C# can still be saved as a pyRevit script.cs button.",
-                cpython = "pyRevit buttons only ('#! python3'). Not live through the MCP.",
+                cpython = "Not live through the MCP. Use IronPython or C#.",
             },
             library = s.EffectiveLibraryPath,
             github = s.GitHubConfigured ? $"{s.GitHubOwner}/{s.GitHubRepo} ({s.EffectiveBranch}), autoPush={s.AutoPush}" : "not set",

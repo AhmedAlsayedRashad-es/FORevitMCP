@@ -191,7 +191,7 @@ public static class CommandLibrary
         sb.AppendLine("# FirstOption Revit Command Library");
         sb.AppendLine();
         sb.AppendLine("The FirstOption Revit MCP writes this file. Do not edit it by hand.");
-        sb.AppendLine("Each command is a pyRevit button in `" + ExtensionFolder + "` and an MCP tool target (`library_run`).");
+        sb.AppendLine("Each command is in `" + ExtensionFolder + "`. Agents run it with the MCP tool `library_run`.");
         sb.AppendLine();
         sb.AppendLine("| Command | Language | Description | Runs | Tested in |");
         sb.AppendLine("|---|---|---|---|---|");

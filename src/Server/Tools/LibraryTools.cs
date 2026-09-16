@@ -35,7 +35,7 @@ public sealed class LibraryTools(RoutesClient routes)
 
     [McpServerTool(Name = "library_save"), Description(
         "Save code that WORKED in Revit to the command library, so any agent can find and run it again later. " +
-        "It writes a pyRevit button (script.py or script.cs) plus metadata, and updates index.json and README.md. " +
+        "It writes the code, a script.py or script.cs wrapper and metadata, and updates index.json and README.md. " +
         "When GitHub auto-push is on, it also pushes to GitHub and the Revit panel shows a notice. " +
         "Save only after a successful run. Write a clear description and list the inputs (args keys, selection, active view).")]
     public Task<string> Save(
@@ -77,7 +77,7 @@ public sealed class LibraryTools(RoutesClient routes)
     });
 
     [McpServerTool(Name = "library_run"), Description(
-        "Run a saved ironpython or csharp command in Revit with optional args. The run count and tested Revit versions are updated. cpython commands run only as pyRevit buttons.")]
+        "Run a saved ironpython or csharp command in Revit with optional args. The run count and tested Revit versions are updated. cpython commands cannot run through the MCP.")]
     public Task<string> Run(
         McpServer server,
         [Description("Command name.")] string name,
@@ -91,7 +91,7 @@ public sealed class LibraryTools(RoutesClient routes)
         var (meta, code, _) = CommandLibrary.Get(name);
         if (meta.Language == "cpython")
             throw new ToolError($"'{name}' is a CPython command. The MCP runs IronPython and C# only.",
-                "Ask the user to click the button on the 'FO Library' tab, or save an IronPython version of the command.");
+                "Save an IronPython or C# version of the command, and run that one.");
 
         var result = await RevitTools.ExecuteAsync(routes, server, meta.Language, code, meta.Name, port, use_transaction, undo_group, null, args_json, timeout_seconds, ct);
         var node = result as System.Text.Json.Nodes.JsonObject;
@@ -100,7 +100,7 @@ public sealed class LibraryTools(RoutesClient routes)
         return result;
     });
 
-    [McpServerTool(Name = "library_info", ReadOnly = true), Description("Where the command library is, how many commands it has, and how to show its buttons in pyRevit.")]
+    [McpServerTool(Name = "library_info", ReadOnly = true), Description("Where the command library is and how many commands it has.")]
     public Task<string> Info(CancellationToken ct = default) => Json.Guard(() =>
     {
         var root = CommandLibrary.Root;
@@ -110,8 +110,7 @@ public sealed class LibraryTools(RoutesClient routes)
             library = root,
             count = all.Count,
             byLanguage = all.GroupBy(c => c.Meta.Language).ToDictionary(g => g.Key, g => g.Count()),
-            pyRevitExtension = Path.Combine(root, CommandLibrary.ExtensionFolder),
-            showButtons = $"pyrevit extensions paths add \"{root}\"  (then reload pyRevit; the buttons are on the 'FO Library' tab)",
+            run = "library_run. Revit has no ribbon tab for the library.",
         });
     });
 }
