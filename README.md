@@ -216,6 +216,9 @@ Advanced settings in `settings.json`: `routesHost` (default `127.0.0.1`), `portS
 | Panel: "pyRevit Routes offline" | pyRevit > Settings > Routes: turn on the server, Save, Reload. Check `pyrevit extensions paths` lists `%LOCALAPPDATA%\First Option\RevitMCP\pyRevit Bridge`. |
 | Panel: bridge answers for another Revit | Reload pyRevit in this Revit. |
 | Tool: "The C# runner is not loaded" | Install the add-in for this Revit version (`install.ps1 -RevitVersions 2026`) and restart Revit. |
+| Install ends with "Install incomplete" | Read the FAIL lines it prints; each line says what to do. The script checks every file it installed. |
+| Install says "No Revit 2021-2026 was found" | Revit is installed in a folder the script does not know. Give the versions yourself: `install.ps1 -RevitVersions 2025,2026`. |
+| Revit shows an add-in error at start | An old manifest points to a folder that is gone. Run `install.ps1` again; it deletes such manifests. |
 | Tool times out | A dialog is open in Revit, or Revit is busy. Close the dialog. |
 | Routes on a different host | Set `routesHost` in `settings.json` to the host in pyRevit Settings > Routes. |
 | `git push failed` | Check the token and the repository in GitHub Settings; use Test connection. |
